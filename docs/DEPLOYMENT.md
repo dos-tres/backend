@@ -6,10 +6,10 @@
 
 둘셋은 다른 사용자가 HTTPS 링크로 접속해 실제 AI 비서 기능을 이용하는 것을 목표로 개발한다. 로컬 실행, 화면 미리보기, 실제 AI가 연결된 배포를 구분한다.
 
-확인한 main 기준:
+2026-11-18 확인 기준(backend는 chore/backend-bootstrap 작업 브랜치):
 - frontend: React + TypeScript + Vite. 예시 데이터와 예시 대화 응답으로 동작한다.
 - frontend: GitHub Actions에 npm ci 및 npm run build 검증이 있다.
-- backend: Python + FastAPI 및 AI 에이전트를 같은 저장소에서 개발하기로 결정했다. 현재 실행 코드는 없다.
+- backend: Python + FastAPI 및 AI 에이전트를 같은 저장소에서 개발하기로 결정했다. FastAPI 실행 기반, healthz, 환경 설정, CORS, 공통 오류 응답과 자동 테스트를 구현하고 로컬 실행을 검증했다.
 - 배포 제공업체, DB, 인증, AI 제공업체와 모델은 미정이다.
 
 이 문서는 개발 기준이다. 배포 설정이나 실제 AI 연동이 구현됐다는 뜻은 아니다.
@@ -28,7 +28,7 @@
 
 ## 3. 첫 구현 범위
 
-첫 단계는 화면에서 입력한 메시지가 backend를 통해 실제 AI 응답으로 돌아오는 최소 기능이다.
+실행 기반 구축은 완료했다. 다음 연결 단계의 목표는 화면에서 입력한 메시지가 backend를 통해 실제 AI 응답으로 돌아오는 최소 기능이며, 아직 구현하지 않았다.
 
 1. 실행 가능한 FastAPI 앱과 설치·로컬 실행 명령을 준비한다.
 2. 서버 상태 확인용 GET /healthz를 제공한다. 키·내부 설정·개인정보는 응답에 포함하지 않는다.
@@ -42,16 +42,16 @@
 
 ## 4. 환경별 설정 원칙
 
-아래 이름은 앞으로 구현할 설정 계약이다. 현재 코드가 읽는 환경변수로 오해하지 않는다.
+APP_ENV와 ALLOWED_ORIGINS는 현재 backend가 읽는다. 나머지는 후속 구현을 위한 계획이며 현재 backend 설정이 아니다. 설정 우선순위와 실행 절차는 README를 따른다.
 
-| 위치 | 제안 이름 | 용도 |
+| 위치 | 이름 | 용도·구현 상태 |
 | --- | --- | --- |
-| frontend | VITE_API_BASE_URL | 공개 가능한 backend 주소; Vite 빌드 시 적용 |
-| backend | APP_ENV | local / staging / production 구분 |
-| backend | ALLOWED_ORIGINS | 허용할 frontend origin 목록; 파싱 형식은 구현 시 명세 |
-| backend | AI_PROVIDER, AI_MODEL | 선택한 제공업체·모델 식별자 |
-| backend | 제공업체에 맞는 API 키 변수 | 서버의 비밀 설정에서만 주입 |
-| backend | DATABASE_URL | DB 도입 시 사용하는 서버 전용 연결 정보 |
+| frontend | VITE_API_BASE_URL | 공개 가능한 backend 주소; frontend 공통 API 모듈 연결은 후속 작업 |
+| backend | APP_ENV | local / staging / production 구분; 구현 완료 |
+| backend | ALLOWED_ORIGINS | 허용할 frontend origin의 JSON 문자열 배열; 구현 완료 |
+| backend | AI_PROVIDER, AI_MODEL | 선택한 제공업체·모델 식별자; 미구현 |
+| backend | 제공업체에 맞는 API 키 변수 | 서버의 비밀 설정에서만 주입; 미구현 |
+| backend | DATABASE_URL | DB 도입 시 사용하는 서버 전용 연결 정보; 미구현 |
 
 - frontend 코드에 localhost나 특정 운영 주소를 직접 넣지 않는다.
 - VITE_ 환경변수와 브라우저 번들은 공개 정보로 취급한다. AI 키·DB 비밀번호·서명 비밀은 넣지 않는다.
@@ -61,7 +61,7 @@
 
 ## 5. 서버와 AI 처리 기준
 
-- 서버는 실행 환경에서 제공하는 포트와 외부 접속용 바인딩을 지원한다. 구체적인 실행 명령은 앱 구현 후 검증해 README에 적는다.
+- 서버는 실행 환경에서 제공하는 포트와 외부 접속용 바인딩을 지원한다. Uvicorn의 --host와 --port로 지정하며, 검증한 명령은 README에 기록했다.
 - 서버 로컬 디스크나 메모리를 사용자 기록의 영구 저장소로 사용하지 않는다.
 - AI 제공업체 호출에 시간 제한과 오류 처리를 적용한다. 재시도는 횟수를 제한하며 중복 실행을 고려한다.
 - 요청 크기·호출 빈도·사용량 상한을 두어 공개 시연 중 과도한 비용을 막는다.
@@ -87,7 +87,7 @@
 
 - 최신 main에서 목적별 브랜치를 만들고 PR로 검토한다. 진행 중인 frontend 홈 디자인 브랜치와 작업은 보존한다.
 - frontend 변경은 기존 npm ci 및 npm run build 검증을 통과시킨다.
-- backend 실행 코드를 추가할 때 요청·응답, 환경 설정, AI 오류 처리를 검증하는 CI를 함께 정한다.
+- 현재 backend CI는 Python 3.13에서 자동 테스트와 pip check를 실행한다. AI 오류 검증은 실제 AI 연동 구현 시 추가한다.
 - 코드·설정에서 비밀값이 노출되지 않는지 확인한다.
 - 미리보기 URL에서 실제 API 연결, 허용 origin, 새로고침과 정적 에셋 로딩을 확인한다.
 - 운영 반영 시 배포 커밋과 되돌릴 이전 배포를 기록한다.
@@ -95,7 +95,7 @@
 
 ## 8. 다음 구현 작업
 
-1. backend 실행 골격, healthz, 환경 설정 예시.
+1. backend 실행 기반 PR 리뷰 및 리뷰 결과 반영(로컬 구현·검증 완료).
 2. 대화 API 계약과 frontend 공통 API 모듈.
 3. 제공업체·모델 선정 후 서버 AI 호출.
 4. 미리보기 배포 대상 선정과 배포 설정.
