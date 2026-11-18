@@ -1,5 +1,44 @@
 # 개발 로그
 
+## 2026-11-18 — PostgreSQL 공통 DB 기반
+
+- 브랜치: `chore/database-foundation`
+- 목적: 후속 정책 수집과 세션·설문 개발이 공유할 PostgreSQL 연결·요청별 DB 세션·마이그레이션 기반 마련.
+- 시작 상태: PR #4 병합 후 최신 origin/main `3998209`에서 생성. 로컬 변경 없음. 이전 README·배포 기준·개발 로그·작업 규칙은 병합된 내용을 보존하고 이어서 갱신했다.
+- 구현 완료와 배포 구분: 로컬 DB 기반 구현·검증 완료이며 실제 배포·운영 DB 구성은 수행하지 않았다. 서비스 세션·설문·정책·추천·AI 기능과 테이블은 추가하지 않았다.
+
+### 주요 변경
+
+- `compose.yaml`, `.env.example`: PostgreSQL 17 개발 DB(named volume)와 별도 테스트 DB(tmpfs), 로컬 전용 포트. 실제 비밀번호·URL은 무시되는 로컬 .env에만 생성했다.
+- `requirements.txt`: SQLAlchemy, psycopg binary, Alembic 추가.
+- `app/config.py`, `app/database.py`, `app/main.py`: SecretStr DATABASE_URL, PostgreSQL URL 검증, 연결 풀, 요청별 세션 의존성, 미커밋 rollback·close, lifespan 종료 dispose. 서버 시작 시 스키마를 변경하지 않음.
+- `alembic.ini`, `migrations/`: 공통 Base.metadata 및 이름 규칙, 이후 모델 import와 autogenerate를 위한 환경. 빈 baseline 0001은 기능 테이블 없이 Alembic 버전만 관리.
+- `tests/test_database.py`, `.github/workflows/backend.yml`: DB 단위·PostgreSQL 통합 테스트 및 CI 전용 PostgreSQL 서비스.
+- `README.md`, `docs/DEPLOYMENT.md`, `AGENTS.md`: 두 팀원 실행 절차, 개발 순서 일치, CLI와 이 대화창의 역할 분담.
+
+### API 변경
+
+- 신규 `GET /readyz`: SELECT 1 성공 시 200 `{"status":"ok"}`, 미설정·연결 실패 시 503 `{"error":{"code":"DATABASE_UNAVAILABLE","message":"Database unavailable"}}`. URL·비밀번호·내부 예외는 응답에 노출하지 않음. 스키마 버전까지 검사하지는 않음.
+- 기존 `GET /healthz`: DB 상태와 무관한 프로세스 상태 확인 200 유지. /docs와 OpenAPI에 readyz 포함.
+
+### 실제 실행한 검증
+
+- SQLAlchemy 2.0.58, psycopg 3.3.9, Alembic 1.20.1 설치 완료.
+- `docker compose --profile test up -d --wait db-test`: PostgreSQL 17 healthy. 개발 DB는 시작하지 않고 별도 컨테이너·dos_tres_test DB·테스트 포트에서만 테스트했다.
+- `python -m unittest discover -s tests -v`: 기존 5개와 신규 5개, 총 10개 통과(skip 없음).
+- 통합 검증: 실제 DB 연결, readyz 200, 존재하지 않는 DB 역할 인증 실패와 readyz 503, 실패 응답 비밀값 미노출, DB 실패 시 healthz 200, 요청별 세션 분리, 예외 후 미커밋 트랜잭션 rollback·풀 반환, 앱 종료 dispose 확인.
+- Alembic Python 명령 API로 upgrade head → check → downgrade base → upgrade head → 재upgrade 실행. 버전 0001, autogenerate 차이 없음, alembic_version 외 기능 테이블 없음 확인. 앱 시작 전후 테이블 목록 동일 확인.
+- 실제 Uvicorn 서버도 전용 테스트 DB URL을 주입해 실행했다. 정상 연결과 인증 실패 각각 HTTP /readyz 200·503, /healthz 200, /docs 200, OpenAPI readyz 경로 확인 후 서버 종료. 개발 DB 데이터에는 접근하지 않았다.
+- `python -m pip check`: 의존성 충돌 없음. `git diff --check`: 통과. .env·.venv·Python 캐시 제외 확인.
+- 기존 Starlette TestClient의 httpx 사용 중단 예정 경고는 남아 있으며 테스트 성공과 별도로 추후 정비할 사항이다.
+- GitHub CI는 PR 생성 후 해당 커밋의 체크에서 확인한다. 로컬 성공을 CI·배포 완료로 간주하지 않는다.
+
+### 팀원 인수인계와 남은 작업
+
+각자 Python 3.13 가상환경에 requirements-dev.txt를 설치한다. 기존 .env를 덮어쓰지 말고 예시에 추가된 개발·테스트 비밀번호, URL, 포트를 각각 채운다. 실제 값은 공유·커밋하지 않는다. `docker compose up -d --wait db` → `python -m alembic upgrade head` → `python -m alembic current` → Uvicorn 실행 순서다. 전용 DB 테스트는 `docker compose --profile test up -d --wait db-test` 후 unittest 명령으로 실행한다. TEST_DATABASE_URL이 없으면 통합 테스트 3개가 skip되므로 DB 검증 완료로 기록하면 안 된다. 종료는 API Ctrl+C, 각 DB는 compose stop을 사용한다. 상세 명령과 병렬 마이그레이션 협업 절차는 README를 따른다.
+
+다음 순서는 **공통 DB·API 구조 → 정책 수집 / 세션·설문 병렬 개발 → 추천·AI 대화 → 프론트 연결·배포**다. 이번 PR 리뷰 반영과 기능 API 계약 합의 후 두 팀원이 병렬 개발한다. 인증·개인 기록 접근 제어, 기능별 모델·revision, 실제 AI 제공업체와 운영 배포는 후속 범위다. CLI는 구현·문서·검증·커밋·푸시·PR까지만 진행하며, 이 대화창에서 PR 검토·병합·다음 작업을 지정한다.
+
 ## 2026-11-18 — FastAPI 실행 기반 구축 및 PR 준비
 
 - 브랜치: `chore/backend-bootstrap`
