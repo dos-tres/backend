@@ -1,14 +1,19 @@
 import logging
+from contextlib import asynccontextmanager
 from http import HTTPStatus
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException
 from starlette.middleware.cors import CORSMiddleware
 
 from app.config import Settings
+from app.database import Database, DatabaseNotConfigured, get_db
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +32,37 @@ def error_response(status: int, code: str, message: str, headers=None) -> JSONRe
 
 def create_app(settings: Settings | None = None) -> CORSMiddleware:
     settings = settings if settings is not None else Settings()
-    api = FastAPI(title="DOS TRES API", version="0.1.0", debug=False)
+
+    @asynccontextmanager
+    async def lifespan(api: FastAPI):
+        url = settings.database_url.get_secret_value()
+        database = Database(url) if url else None
+        api.state.database = database
+        try:
+            yield
+        finally:
+            if database is not None:
+                database.dispose()
+            api.state.database = None
+
+    api = FastAPI(title="DOS TRES API", version="0.1.0", debug=False, lifespan=lifespan)
     api.state.settings = settings
+    api.state.database = None
 
     @api.get("/healthz", response_model=HealthResponse, tags=["health"])
     async def healthz() -> HealthResponse:
+        return HealthResponse()
+
+    @api.exception_handler(DatabaseNotConfigured)
+    async def database_missing(request: Request, exc: DatabaseNotConfigured) -> JSONResponse:
+        return error_response(503, "DATABASE_UNAVAILABLE", "Database unavailable")
+
+    @api.get("/readyz", response_model=HealthResponse, tags=["health"], responses={503: {"description": "Database unavailable"}})
+    def readyz(session: Session = Depends(get_db)):
+        try:
+            session.execute(text("SELECT 1"))
+        except SQLAlchemyError:
+            return error_response(503, "DATABASE_UNAVAILABLE", "Database unavailable")
         return HealthResponse()
 
     @api.exception_handler(HTTPException)
