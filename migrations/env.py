@@ -6,6 +6,7 @@ from app.database import Base
 
 # Import model modules here so autogenerate sees their metadata.
 import app.catalog.models  # noqa: E402,F401
+import app.users.models  # noqa: E402,F401
 target_metadata = Base.metadata
 url = Settings().database_url.get_secret_value()
 if not url:

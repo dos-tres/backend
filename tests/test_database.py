@@ -59,9 +59,10 @@ class PostgreSQLTests(unittest.TestCase):
             database = Database(self.url)
             try:
                 with database.engine.connect() as connection:
-                    self.assertEqual(connection.scalar(text("SELECT version_num FROM alembic_version")), "0003")
+                    self.assertEqual(connection.scalar(text("SELECT version_num FROM alembic_version")), "0004")
                     self.assertEqual(sorted(inspect(connection).get_table_names()),
-                                     ["alembic_version", "catalog_item_changes", "catalog_items"])
+                                     ["alembic_version", "catalog_item_changes", "catalog_items", "checkin_responses",
+                                      "user_consents", "user_profiles", "users"])
                 command.check(config)
                 command.downgrade(config, "base")
                 with database.engine.connect() as connection:

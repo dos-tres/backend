@@ -1,5 +1,31 @@
 # 개발 로그
 
+## 2026-11-19 — 회원 테이블 (migration 0004)
+
+- 브랜치: `feat/user-schema` (`main` f0a550c에서 생성)
+- 목적: 회원 관리 DB 구조를 미리 만들어 둔다. 로그인 방식은 미정.
+- 구현 완료와 배포 구분: 테이블·모델·migration·테스트·문서 완료. 가입·로그인·프로필 API, 인증은 만들지 않았다. 배포하지 않았다.
+
+### 결정
+
+- 로그인 방식과 상관없는 4개만 테이블로: `users`, `user_profiles`, `user_consents`, `checkin_responses`.
+- 로그인 수단(`user_identities`)·세션(`auth_sessions`)은 `app/users/models.py`에 주석으로 설계만 남김(회원과 로그인 수단 분리, provider_subject 식별, 서버 세션 + 토큰 해시, 익명 시작 후 가입 연결).
+- 회원 데이터는 모두 `users`를 CASCADE로 참조 → 회원 행 삭제 = 개인 데이터 삭제.
+- 프로필은 추천 API profile과 같은 값, 나이 대신 출생연도. 상황(민감 정보)·상태 체크 응답·대화는 동의(`user_consents`)가 있을 때만 저장(서비스 코드에서 확인).
+- 상태 체크 응답은 덮어쓰지 않고 쌓음. 문항 버전 `QUESTION_VERSION`(`app/checkin/questions.py`) 추가.
+- 테이블 설명은 `docs/DATABASE.md` 한곳에 모음(카탈로그 상세는 RECOMMENDATION.md 링크).
+
+### 실제 실행한 검증
+
+- 개발 DB `alembic upgrade head` → 0004, `alembic check` 차이 없음.
+- `python -m unittest discover -s tests`: 44개 통과(로컬 Docker PostgreSQL 17). 신규 `test_users_db.py`: 기본값(UUID·status·빈 배열), CHECK 제약 6종, 회원 삭제 시 프로필·동의·상태 체크 응답 삭제. `test_database.py` 0004 반영(upgrade/downgrade 왕복 포함).
+
+### 남은 작업
+
+- 로그인 방식 결정 → `user_identities`·`auth_sessions` migration, 가입·로그인·프로필·동의 API, 사용자별 접근 제어.
+- 마이페이지 기록(`saved_items`·`activity_records`·`schedule_events`)과 대화 저장 테이블은 화면·기능 연결 때.
+- 탈퇴 유예·보관 기간·동의 문구 버전 정책.
+
 ## 2026-11-19 — 페르소나 점검으로 찾은 추천 오류 수정
 
 - 브랜치: `feat/recommendation-pipeline` (PR #6에 이어서)
