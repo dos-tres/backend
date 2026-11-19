@@ -1,5 +1,37 @@
 # 개발 로그
 
+## 2026-11-19 — catalog 변경 감지와 변경 이력 (`catalog_item_changes`)
+
+- 브랜치: `feat/recommendation-pipeline` (PR #6에 이어서)
+- 목적: `source_hash`를 저장만 하고 비교하지 않아 매일 전 행을 덮어쓰고 `updated_at`이 '마지막 적재 시각'이 되던 문제를 고치고, 원본 변경을 이력으로 남긴다.
+- 구현 완료와 배포 구분: 코드·마이그레이션·테스트 작성 완료. 운영 DB 적용·배포는 하지 않았다.
+
+### 결정
+
+- 해시는 serving 항목 전체의 SHA-256, 단 매일 바뀌는 정책 조회수 `inqCnt`는 뺀다. 조회수는 payload에는 계속 반영한다(추천 동점 정리에 씀).
+- 변경 종류: created / updated / reopened / closed. updated·reopened는 이전 payload와 바뀐 최상위 필드를 남긴다. 찜·신청 항목 변경 알림을 위해 덮어쓰기만 하는 방식 대신 이력 저장을 선택했다.
+- `updated_at`은 해시·상태가 바뀐 시각만 뜻한다.
+
+### 주요 변경
+
+- `app/catalog/rows.py`: `content_hash`, `changed_fields`, `VOLATILE_FIELDS`.
+- `app/catalog/models.py`: `CatalogItemChange`. `migrations/versions/0003_catalog_item_changes.py`.
+- `app/catalog/load.py`: `plan_changes`(순수 함수)로 분류 후 upsert. 완전히 같은 행은 쓰지 않고, 닫힘은 `RETURNING`으로 실제 닫힌 id만 이력에 남긴다. 반환값이 `{received, created, updated, reopened, unchanged, closed, previously_active}`로 바뀌었다.
+- 테스트: `test_catalog_changes.py` 신규(DB 없이), `test_catalog_db.py`에 이력·조회수 케이스 추가, `test_database.py` 0003 반영.
+- 문서: `docs/RECOMMENDATION.md` 2장, README, `docs/DEPLOYMENT.md`.
+
+### 실제 실행한 검증
+
+- 로컬 Docker Desktop(PostgreSQL 17 컨테이너 `db`·`db-test`)에서 실행.
+- `python -m unittest discover -s tests -v`: 37개 전부 통과(DB 통합 테스트 포함, `alembic check` 차이 없음).
+  - 처음 실행에서 `load.py`가 SQLAlchemy Result를 `dict.update`에 넘겨 실패한 것을 찾아 고쳤다(Result에 `keys()`가 있어 매핑으로 처리됨).
+- 개발 DB: `alembic upgrade head` → 0003. `load_catalog --seed` 1회차 created 정책 2,335·프로그램 169, 같은 데이터 2회차 전부 unchanged(이력 추가 없음).
+
+### 남은 작업
+
+- 이력 보관 기간·정리 정책, 찜·신청 기능과 연결한 변경 알림.
+- 해시 방식 변경 후 첫 적재에서 기존 행이 모두 `updated`(바뀐 필드 없음)로 한 번 기록된다. 운영 DB가 아직 없어 별도 처리는 하지 않았다.
+
 ## 2026-11-19 — 정책·센터 프로그램 추천 파이프라인과 API
 
 - 브랜치: `feat/recommendation-pipeline` (origin/main `d11488c`에서 생성)

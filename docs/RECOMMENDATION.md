@@ -71,11 +71,39 @@ SQLite는 파일 하나라 JSON과 운영상 차이가 크지 않고, 레포가 
 | `region_cds` (ARRAY, GIN) | 정책: 시군구 코드 목록 / 프로그램: 센터 시군구 |
 | `sido_cds` (ARRAY, GIN) | 시도 코드 앞 2자리 |
 | `domains`, `situations` (ARRAY) | 분류 결과 |
-| `source_hash` | 원본이 바뀌었는지 비교 |
+| `source_hash` | serving 항목의 SHA-256. 매일 바뀌는 조회수 `inqCnt`는 뺀다(`rows.VOLATILE_FIELDS`) |
 | `payload` (JSONB) | serving JSON 항목 전체 |
-| `first_seen_at`, `updated_at` | 이력 |
+| `first_seen_at` | 처음 적재한 시각 |
+| `updated_at` | 내용(해시)이나 상태가 마지막으로 바뀐 시각. 조회수만 바뀐 날은 그대로 |
 
-적재(`app/catalog/load.py`): 같은 id는 갱신, 오늘 목록에 없는 id는 `closed`. 오늘 건수가 기존 ok 건수의 50% 미만이면 수집 실패로 보고 적재하지 않는다(`--force`로 무시). 종류별로 한 트랜잭션이라 실패하면 기존 데이터가 그대로 남는다.
+### `catalog_item_changes` (변경 이력, migration 0003)
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `id` | BIGINT identity |
+| `item_id` | `catalog_items.id` (FK, 항목 삭제 시 함께 삭제) |
+| `kind` | policy / program |
+| `change_type` | created / updated / reopened / closed |
+| `old_hash`, `new_hash` | 바뀌기 전·후 `source_hash` |
+| `changed_fields` (TEXT[]) | 값이 달라진 payload 최상위 필드 (예: `aplyYmd`, `title`) |
+| `old_payload` (JSONB) | updated·reopened(내용도 바뀐 경우)일 때 바뀌기 전 payload |
+| `changed_at` | 기록 시각 |
+
+인덱스: `(item_id, changed_at)`(항목별 이력), `changed_at`(기간별 조회). 보관 기간·정리는 아직 정하지 않았다.
+
+적재(`app/catalog/load.py`): 기존 행의 `source_hash`·`status`와 비교해 나눈다.
+
+| 경우 | 처리 | 이력 |
+| --- | --- | --- |
+| 처음 보는 id | INSERT | `created` |
+| 해시가 다름 | 필터 컬럼·payload 갱신, `updated_at` 갱신 | `updated` + 이전 payload·바뀐 필드 |
+| 닫혔던 id가 다시 나타남 | `status='ok'`, `updated_at` 갱신 | `reopened` (내용도 바뀌었으면 이전 payload) |
+| 해시 같음 | 조회수 등 해시 밖 값만 payload에 반영, `updated_at` 그대로 | 없음 |
+| 오늘 목록에 없음 | `status='closed'` | `closed` |
+
+반환값은 `{received, created, updated, reopened, unchanged, closed, previously_active}`. 오늘 건수가 기존 ok 건수의 50% 미만이면 수집 실패로 보고 적재하지 않는다(`--force`로 무시). 종류별로 한 트랜잭션이라 실패하면 기존 데이터와 이력이 그대로 남는다.
+
+LLM 재분류는 적재와 별개로 앞 단계 캐시가 정한다(정책: `plcyNo`+`lastMdfcnDt`+프롬프트 버전, 프로그램: 제목·요약 해시). 해시 계산 방식을 바꾼 뒤 첫 적재에서는 기존 행이 모두 `updated`(바뀐 필드 없음)로 한 번 기록된다.
 
 ## 3. 분류 기준
 

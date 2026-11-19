@@ -14,7 +14,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.engine import make_url
 
 from app.catalog.load import upsert_catalog
-from app.catalog.models import CatalogItem
+from app.catalog.models import CatalogItem, CatalogItemChange
 from app.catalog.repository import from_db, from_files
 from app.catalog.rows import build_rows
 from app.config import Settings
@@ -47,6 +47,7 @@ class CatalogDatabaseTests(unittest.TestCase):
 
     def setUp(self):
         with self.database.sessions() as session:
+            session.execute(delete(CatalogItemChange))
             session.execute(delete(CatalogItem))
             session.commit()
 
@@ -63,13 +64,14 @@ class CatalogDatabaseTests(unittest.TestCase):
         with self.database.sessions() as session:
             result = upsert_catalog(session, "policy", policies)
             session.commit()
-            self.assertEqual(result["upserted"], len(policies))
+            self.assertEqual(result["created"], len(policies))
             self.assertEqual(self.count(session, kind="policy", status="ok"), len(policies))
 
             # 같은 데이터를 다시 넣어도 행이 늘지 않는다 (upsert)
-            upsert_catalog(session, "policy", policies)
+            result = upsert_catalog(session, "policy", policies)
             session.commit()
             self.assertEqual(self.count(session), len(policies))
+            self.assertEqual(result["unchanged"], len(policies))
 
             # 일부가 빠지면 closed 로 바뀌고 행은 남는다
             kept = policies[: int(len(policies) * 0.8)]
@@ -83,6 +85,71 @@ class CatalogDatabaseTests(unittest.TestCase):
                 upsert_catalog(session, "policy", policies[:10])
             session.rollback()
             self.assertEqual(self.count(session, status="ok"), len(kept))
+
+    def history(self, session, item_id):
+        return session.scalars(select(CatalogItemChange).where(CatalogItemChange.item_id == item_id)
+                               .order_by(CatalogItemChange.id)).all()
+
+    def test_change_history(self):
+        programs = seed_rows("program")
+        target = programs[0]
+        with self.database.sessions() as session:
+            upsert_catalog(session, "program", programs)
+            session.commit()
+            before = session.get(CatalogItem, target["id"]).updated_at
+            self.assertEqual([c.change_type for c in self.history(session, target["id"])], ["created"])
+
+            # 같은 데이터 → 이력·updated_at 그대로
+            upsert_catalog(session, "program", programs)
+            session.commit()
+            session.expire_all()
+            self.assertEqual(len(self.history(session, target["id"])), 1)
+            self.assertEqual(session.get(CatalogItem, target["id"]).updated_at, before)
+
+            # 제목이 바뀌면 updated 이력에 이전 payload·바뀐 필드가 남는다
+            new_payload = {**target["payload"], "title": target["payload"]["title"] + " (수정)"}
+            changed = build_rows("program", {"programs": [new_payload]})[0]
+            result = upsert_catalog(session, "program", [changed, *programs[1:]])
+            session.commit()
+            session.expire_all()
+            self.assertEqual(result["updated"], 1)
+            last = self.history(session, target["id"])[-1]
+            self.assertEqual(last.change_type, "updated")
+            self.assertEqual(last.changed_fields, ["title"])
+            self.assertEqual(last.old_payload["title"], target["payload"]["title"])
+            row = session.get(CatalogItem, target["id"])
+            self.assertEqual(row.title, changed["title"])
+            self.assertGreater(row.updated_at, before)
+
+            # 빠지면 closed, 다시 나타나면 reopened
+            upsert_catalog(session, "program", programs[1:])
+            upsert_catalog(session, "program", programs)
+            session.commit()
+            session.expire_all()
+            types =[c.change_type for c in self.history(session, target["id"])]
+            self.assertEqual(types, ["created", "updated", "closed", "reopened"])
+            reopened = self.history(session, target["id"])[-1]
+            self.assertEqual(reopened.changed_fields, ["title"])   # 닫히기 전 수정본 → 원래 제목으로 돌아옴
+            self.assertEqual(session.get(CatalogItem, target["id"]).status, "ok")
+
+    def test_volatile_field_updates_payload_without_history(self):
+        policies = seed_rows("policy")
+        target = policies[0]
+        with self.database.sessions() as session:
+            upsert_catalog(session, "policy", policies)
+            session.commit()
+            before = session.get(CatalogItem, target["id"]).updated_at
+            bumped = build_rows("policy", {"policies": [{**target["payload"],
+                                                         "inqCnt": (target["payload"].get("inqCnt") or 0) + 7}]})[0]
+            self.assertEqual(bumped["source_hash"], target["source_hash"])
+            result = upsert_catalog(session, "policy", [bumped, *policies[1:]])
+            session.commit()
+            session.expire_all()
+            self.assertEqual(result["unchanged"], len(policies))
+            row = session.get(CatalogItem, target["id"])
+            self.assertEqual(row.payload["inqCnt"], bumped["payload"]["inqCnt"])
+            self.assertEqual(row.updated_at, before)
+            self.assertEqual(len(self.history(session, target["id"])), 1)
 
     def test_db_query_matches_file_fallback(self):
         with self.database.sessions() as session:

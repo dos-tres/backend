@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Index, Integer, String, Text, func
+from sqlalchemy import (BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Identity, Index, Integer, String,
+                        Text, func)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,4 +39,32 @@ class CatalogItem(Base):
         Index("ix_catalog_items_kind_status", "kind", "status"),
         Index("ix_catalog_items_region_cds", "region_cds", postgresql_using="gin"),
         Index("ix_catalog_items_sido_cds", "sido_cds", postgresql_using="gin"),
+    )
+
+
+CHANGE_TYPES = ("created", "updated", "reopened", "closed")
+
+
+class CatalogItemChange(Base):
+    """catalog_items 변경 이력. 적재할 때 새로 생김·내용 바뀜·다시 열림·닫힘을 한 줄씩 쌓는다.
+
+    updated·reopened(내용도 바뀐 경우)는 바뀌기 전 payload 를 old_payload 에 남긴다.
+    찜·신청한 항목의 변경 알림, 수집 이상 추적에 쓴다.
+    """
+    __tablename__ = "catalog_item_changes"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    item_id: Mapped[str] = mapped_column(String(80), ForeignKey("catalog_items.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    change_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    old_hash: Mapped[str | None] = mapped_column(String(64))
+    new_hash: Mapped[str | None] = mapped_column(String(64))
+    changed_fields: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)   # payload 최상위 필드 이름
+    old_payload: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))   # None → SQL NULL (JSON null 아님)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("change_type IN ('created', 'updated', 'reopened', 'closed')", name="change_type"),
+        Index("ix_catalog_item_changes_item_id_changed_at", "item_id", "changed_at"),
+        Index("ix_catalog_item_changes_changed_at", "changed_at"),
     )

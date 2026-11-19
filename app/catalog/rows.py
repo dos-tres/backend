@@ -28,8 +28,20 @@ def policy_deadline(item: dict) -> date | None:
     return _date(found[-1]) if found else None
 
 
-def _hash(*parts: str) -> str:
-    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:64]
+# 내용 변경이 아닌데 매일 바뀌는 필드. payload 에는 남기되 source_hash·변경 이력 비교에서는 뺀다.
+VOLATILE_FIELDS = frozenset({"inqCnt"})   # 정책 조회수
+
+
+def content_hash(item: dict) -> str:
+    """원본 항목의 내용 해시 (VOLATILE_FIELDS 제외). 같으면 바뀐 것이 없다고 본다."""
+    stable = {k: v for k, v in item.items() if k not in VOLATILE_FIELDS}
+    return hashlib.sha256(json.dumps(stable, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def changed_fields(old: dict, new: dict) -> list[str]:
+    """두 payload 사이에 값이 달라진 최상위 필드 (VOLATILE_FIELDS 제외, 이름순)."""
+    keys = (set(old) | set(new)) - VOLATILE_FIELDS
+    return sorted(k for k in keys if old.get(k) != new.get(k))
 
 
 def policy_row(item: dict) -> dict:
@@ -47,7 +59,7 @@ def policy_row(item: dict) -> dict:
         "situations": list(item.get("situations") or []),
         "access_type": item.get("access_type"),
         "deadline": policy_deadline(item),
-        "source_hash": _hash(item.get("lastMdfcnDt") or "", json.dumps(item, ensure_ascii=False, sort_keys=True)),
+        "source_hash": content_hash(item),
         "payload": item,
     }
 
@@ -67,7 +79,7 @@ def program_row(item: dict) -> dict:
         "situations": list(item.get("situations") or []),
         "access_type": item.get("access_type"),
         "deadline": _date(item.get("aply_end")),
-        "source_hash": _hash(json.dumps(item, ensure_ascii=False, sort_keys=True)),
+        "source_hash": content_hash(item),
         "payload": item,
     }
 
