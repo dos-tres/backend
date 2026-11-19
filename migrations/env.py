@@ -4,7 +4,8 @@ from sqlalchemy import create_engine, pool
 from app.config import Settings
 from app.database import Base
 
-# Import future model modules here so autogenerate sees their metadata.
+# Import model modules here so autogenerate sees their metadata.
+import app.catalog.models  # noqa: E402,F401
 target_metadata = Base.metadata
 url = Settings().database_url.get_secret_value()
 if not url:

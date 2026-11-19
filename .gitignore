@@ -4,3 +4,5 @@ __pycache__/
 .env
 .env.*
 !.env.example
+# 파이프라인이 매일 만드는 파일 (data/seed 는 커밋한다)
+data/runtime/

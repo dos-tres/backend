@@ -14,6 +14,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.config import Settings
 from app.database import Database, DatabaseNotConfigured, get_db
+from app.recommend.router import router as recommend_router
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,8 @@ def create_app(settings: Settings | None = None) -> CORSMiddleware:
         except SQLAlchemyError:
             return error_response(503, "DATABASE_UNAVAILABLE", "Database unavailable")
         return HealthResponse()
+
+    api.include_router(recommend_router)
 
     @api.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException) -> JSONResponse:

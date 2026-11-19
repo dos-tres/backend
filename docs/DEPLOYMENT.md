@@ -10,7 +10,7 @@
 - frontend: React + TypeScript + Vite. 예시 데이터와 예시 대화 응답으로 동작한다.
 - frontend: GitHub Actions에 npm ci 및 npm run build 검증이 있다.
 - backend: Python + FastAPI 및 AI 에이전트를 같은 저장소에서 개발하기로 결정했다. FastAPI 실행 기반, healthz, 환경 설정, CORS, 공통 오류 응답과 자동 테스트를 구현하고 로컬 실행을 검증했다.
-- 기본 DB는 PostgreSQL 17이다. SQLAlchemy 연결·요청별 세션, Alembic, /readyz를 구현했다. 기능 테이블은 아직 없고 배포 제공업체, 인증, AI 제공업체와 모델은 미정이다.
+- 기본 DB는 PostgreSQL 17이다. SQLAlchemy 연결·요청별 세션, Alembic, /readyz를 구현했다. 정책·프로그램 카탈로그 테이블 `catalog_items`(0002)와 추천 API를 구현했다(배포 전). 매일 수집 스케줄러 실행 위치는 배포 환경과 함께 정한다. 배포 제공업체, 인증, AI 제공업체와 모델은 미정이다.
 
 이 문서는 개발 기준이다. 배포 설정이나 실제 AI 연동이 구현됐다는 뜻은 아니다.
 
@@ -28,7 +28,7 @@
 
 ## 3. 현재 공통 기반과 다음 기능 범위
 
-FastAPI 실행 기반과 PostgreSQL 공통 기반을 구현했다. /healthz는 프로세스 상태, /readyz는 DB 연결 상태를 확인한다. SQLAlchemy 요청별 세션과 공통 오류 응답을 제공하며 Alembic은 서버와 분리해 명시적으로 실행한다. 현재 baseline은 기능 테이블을 만들지 않는다.
+FastAPI 실행 기반과 PostgreSQL 공통 기반을 구현했다. /healthz는 프로세스 상태, /readyz는 DB 연결 상태를 확인한다. SQLAlchemy 요청별 세션과 공통 오류 응답을 제공하며 Alembic은 서버와 분리해 명시적으로 실행한다. 0001 baseline 뒤에 0002가 `catalog_items`를 만든다. 운영 DB에는 마이그레이션 후 `python -m pipeline.load_catalog`로 데이터를 넣는다.
 
 이 PR 리뷰 후 공통 API 계약을 합의하고 정책 수집 / 세션·설문을 병렬 개발한다. 추천·AI 대화, 프론트 연결·배포는 그 다음 단계다. 개인 기록은 인증과 사용자별 접근 제어를 함께 구현한 뒤 저장한다.
 

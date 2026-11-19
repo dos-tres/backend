@@ -52,15 +52,15 @@ class PostgreSQLTests(unittest.TestCase):
         if development_url and make_url(development_url) == parsed:
             raise RuntimeError("Test and development database URLs must differ")
 
-    def test_migrations_upgrade_downgrade_and_no_feature_tables(self):
+    def test_migrations_upgrade_downgrade_and_catalog_table(self):
         config = Config("alembic.ini")
         with patch.dict(os.environ, {"DATABASE_URL": self.url}):
             command.upgrade(config, "head")
             database = Database(self.url)
             try:
                 with database.engine.connect() as connection:
-                    self.assertEqual(connection.scalar(text("SELECT version_num FROM alembic_version")), "0001")
-                    self.assertEqual(inspect(connection).get_table_names(), ["alembic_version"])
+                    self.assertEqual(connection.scalar(text("SELECT version_num FROM alembic_version")), "0002")
+                    self.assertEqual(sorted(inspect(connection).get_table_names()), ["alembic_version", "catalog_items"])
                 command.check(config)
                 command.downgrade(config, "base")
                 with database.engine.connect() as connection:

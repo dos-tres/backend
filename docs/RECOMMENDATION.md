@@ -1,0 +1,154 @@
+# 정책·프로그램 추천
+
+청년정책(온통청년)과 청년센터 프로그램을 같은 기준으로 분류하고, 사용자의 상태 체크 답변과 기본 정보에 맞춰 추천한다. 2026-11-19 기준이다.
+
+- 구현 완료: 수집·분류 파이프라인, `catalog_items` 테이블, 적재 스크립트, 상태 체크·추천 API, 파일 fallback
+- 계획: 매일 실행 스케줄러(서버 안 또는 외부 cron), 운영 DB 적재, AI 비서 대화와의 연결
+- 배포: 아직 하지 않음
+
+관련 문서: [POLICY_FIELDS.md](POLICY_FIELDS.md) · [CENTER_FIELDS.md](CENTER_FIELDS.md) · [DATA_FIELDS.md](DATA_FIELDS.md) · [CRAWLER.md](CRAWLER.md) · [DATA_CHECK.md](DATA_CHECK.md)
+
+## 1. 전체 흐름
+
+```text
+[매일]  pipeline/run_daily.py
+  정책: policies/fetch.py (온통청년 API) → policies/classify.py (규칙 + LLM, 캐시)
+  센터: programs/crawl/sync_centers → seoul_orang → gnuboard → merge → programs/classify.py
+  → data/runtime/serving/*.json → pipeline/load_catalog.py → catalog_items (PostgreSQL)
+
+[요청]  POST /api/recommendations
+  catalog_items 기본 필터(SQL) → 자격 규칙 → 점수 → 정책 6 · 프로그램 4
+  DB가 없거나 비어 있으면 serving JSON으로 같은 계산 (응답 source = "file")
+```
+
+추천 계산에는 LLM을 쓰지 않는다. LLM은 하루 한 번 분류에만 쓰고, 결과는 캐시해서 바뀐 글만 다시 분류한다. 같은 입력이면 항상 같은 추천이 나온다.
+
+### 폴더
+
+| 경로 | 내용 | Git |
+| --- | --- | --- |
+| `pipeline/` | 수집·분류·적재 스크립트 | O |
+| `data/seed/` | 첫 실행·CI·DB 없는 환경용 결과물 (serving JSON, 분류 캐시, 센터 목록) | O |
+| `data/runtime/` | 매일 실행 결과 | X (gitignore) |
+| `app/catalog/` | `catalog_items` 모델, 행 변환, upsert, 후보 조회 | O |
+| `app/checkin/` | 상태 체크 문항과 요약 | O |
+| `app/recommend/` | 자격·점수 규칙, 서비스, API | O |
+| `tools/data_check/` | 원본 API 조사 스크립트 (결과는 `data/runtime/data_check/`) | O |
+
+### 실행
+
+```bash
+# .env에 YOUTH_POLICY_API_KEY, YOUTH_CENTER_API_KEY, GMS_KEY(또는 OPENAI_API_KEY) 입력
+python -m pipeline.run_daily              # 수집 → 분류 → DB 적재
+python -m pipeline.run_daily --full       # 첫 실행: 서울 오랑 전체 수집
+python -m pipeline.run_daily --no-llm     # 캐시에 있는 분류만 사용
+python -m pipeline.load_catalog --seed    # 키 없이 seed 데이터만 DB에 넣기
+python scripts/recommend_demo.py          # 페르소나 5명 추천 결과 (파일 기준)
+```
+
+## 2. 왜 이렇게 저장하나
+
+정책·프로그램은 **테이블 하나(`catalog_items`) + JSONB**로 둔다. 2026-11-19 결정.
+
+| 방식 | 장점 | 단점 |
+| --- | --- | --- |
+| JSON 파일만 | 단순, DB 없이 동작 | 요청마다 수천 건을 읽고 거름. 마감·지역 필터를 매번 파이썬으로. 이력(언제 처음 봤나, 언제 닫혔나) 없음 |
+| 정규화 테이블 여러 개 | 조회가 가장 정확 | 원본 필드가 많고 자주 바뀌어서 마이그레이션 부담이 큼. 해커톤 일정에 맞지 않음 |
+| **테이블 하나 + JSONB (선택)** | 필터에 쓰는 컬럼(나이·지역·영역·상황·마감·상태)만 컬럼으로, 나머지 원본은 `payload`에 통째로. 지역은 GIN 인덱스. 사용자·신청 이력과 같은 DB에서 조인 가능 | 필터 컬럼을 추가하면 마이그레이션 필요 |
+
+SQLite는 파일 하나라 JSON과 운영상 차이가 크지 않고, 레포가 이미 PostgreSQL 17로 정해져 있어서 쓰지 않는다.
+
+로컬·CI에서 PostgreSQL을 Docker로 띄우는 이유: 운영과 같은 버전·기능(ARRAY, JSONB, GIN)을 모든 팀원 PC와 CI에서 똑같이 재현하기 위해서다. 운영은 관리형 PostgreSQL을 쓰고 앱은 `DATABASE_URL`만 바꾼다.
+
+### `catalog_items`
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `id` | `policy:{plcyNo}` / `program:{program_id}` |
+| `kind` | policy / program |
+| `status` | ok / hold / excluded / closed |
+| `title`, `age_min`, `age_max`, `deadline`, `access_type` | 필터·표시용 |
+| `region_cds` (ARRAY, GIN) | 정책: 시군구 코드 목록 / 프로그램: 센터 시군구 |
+| `sido_cds` (ARRAY, GIN) | 시도 코드 앞 2자리 |
+| `domains`, `situations` (ARRAY) | 분류 결과 |
+| `source_hash` | 원본이 바뀌었는지 비교 |
+| `payload` (JSONB) | serving JSON 항목 전체 |
+| `first_seen_at`, `updated_at` | 이력 |
+
+적재(`app/catalog/load.py`): 같은 id는 갱신, 오늘 목록에 없는 id는 `closed`. 오늘 건수가 기존 ok 건수의 50% 미만이면 수집 실패로 보고 적재하지 않는다(`--force`로 무시). 종류별로 한 트랜잭션이라 실패하면 기존 데이터가 그대로 남는다.
+
+## 3. 분류 기준
+
+정책과 프로그램에 같은 태그를 붙인다.
+
+### `i5_domains` — 어떤 어려움을 덜어주나 (0~2개, 주 영역이 앞)
+
+| 코드 | 영역 | 예 |
+| --- | --- | --- |
+| E | 경제 | 일자리, 창업, 주거비, 대출, 자산형성, 출산·육아 지원금 |
+| P | 모임 참여 | 동아리, 소모임, 커뮤니티, 봉사 |
+| O | 외출·여가 | 문화패스, 공연·전시, 체육, 클래스 |
+| C | 사람과의 교류 | 만남 프로그램, 소셜다이닝, 네트워킹 |
+| U | 도움·상담 | 심리상담, 고립·은둔 지원, 법률·노무·재무 상담, 돌봄 |
+
+### 나머지 태그
+
+- `access_type`: apply(신청·모집) / visit(가서 이용) / none(시설 조성·공지·결과 발표 → 제외)
+- `situations`: 임신·출산, 육아, 기혼, 미혼, 한부모가정, 가족돌봄청년, 자립준비청년, 기초생활수급자, 장애인, 군인, 농업인, 중소기업재직, 여성, 지역인재. 정책은 원본 코드(`sbizCd`, `mrgSttsCd`)와 키워드로 규칙이 먼저 붙이고 LLM이 확정한다.
+- `topics`: 프로그램 전용 관심 분야 0~2개 (정책은 중분류로 연결)
+- `confidence` high/low, `status`: none → excluded, 영역 없음·확신 낮음 → hold, 나머지 ok. 수동 보정 대신 **애매하면 보류**로 정했다.
+
+현재 seed: 정책 ok 2,335건, 프로그램 ok 169건 (프로그램은 대부분 서울).
+
+## 4. 상태 체크 (레포 요구사항 방식)
+
+`docs/requirements.md`의 선택형 현재 상태 체크를 따른다. 2026-11-19 결정: 이전에 검토한 I5 11문항 또래 비교 방식 대신 레포 방식. 이유는 진단처럼 보이지 않고, 문항이 짧고, 점수·위험 등급을 만들지 않기 때문이다.
+
+- 영역 5문항(경제·모임 참여·외출·교류·도움) — 각각 높음/보통/낮음 + 공통 `잘 모르겠어요`·`건너뛰기`·`나중에`
+- 추가: 만족도, 바꾸고 싶은 영역(복수), 대면 부담, 관심 분야(최대 3)
+
+요약 규칙(`app/checkin/summary.py`):
+
+- 영역 수준은 사용자 답 그대로. 모름·건너뛰기·나중에는 수준 없음
+- 바꾸고 싶은 영역을 골랐으면 고르지 않은 영역은 한 단계 낮춤
+- 모임 참여 어려움이 높으면 경제를 최소 보통으로 (모임 비용 부담 반영)
+- 점수나 위험 등급은 내지 않는다. 응답에 "진단이 아님" 안내 포함
+
+## 5. 추천 알고리즘 (`app/recommend/rules.py`)
+
+1. **기본 필터** (SQL): status ok, 마감 안 지남, 나이 포함, 지역. 정책은 사용자 시군구 코드가 `region_cds`에 있어야 하고, 프로그램은 같은 시군구 또는 같은 시도 센터.
+2. **자격 규칙**: 직업(`jobCd`), 학력(`schoolCd`), 자격 상황(GATE: 모두 해당해야), 생애 단계 상황(STAGE: 하나만 해당해도).
+3. **점수**: 영역 수준 높음 30 / 보통 18 (주 영역 만점, 보조 영역 절반) · 관심 분야 +10 · 상황 일치 +10 · 지역(정책 시군구 +4, 광역 +2 / 프로그램 같은 구 +10) · 상시 프로그램 −4 · 대면 부담 높음 −8, 보통 −3 (모임·교류 영역이나 방문형) · 조회수로 동점 정리
+4. **정리**: 제목 중복 제거, 영역당 최대 3개(관심 영역이 하나뿐이면 예외), 정책 6개·프로그램 4개. 항목마다 추천 이유 문장.
+
+가중치는 데모 기준 초안이다. 실제 사용자 반응을 보고 조정한다.
+
+### API
+
+| 메서드 | 경로 | 설명 |
+| --- | --- | --- |
+| GET | `/api/checkin/questions` | 문항 목록 |
+| POST | `/api/checkin/summary` | `{answers}` → 영역 수준 요약. 잘못된 답은 422 |
+| POST | `/api/recommendations` | `{profile, checkin}` → `summary`, `policies`, `programs`, `source` |
+
+`profile`: age, sex, sigungu_cd(5자리), job, school, situations.
+
+## 6. 고친 문제 기록
+
+| 문제 | 처리 |
+| --- | --- |
+| 특화분야 코드가 안 들어감 (`sBizCd` → 실제 `sbizCd`) | 필드명 수정 |
+| 나이 상한 0을 '0세까지'로 처리 (1,127건) | 0 → 제한 없음 |
+| 지자체 정책 90건이 전국 지역코드 | 등록기관 시도로 좁힘 |
+| '창업보육'이 육아로 분류 | 규칙·serving 양쪽 보정 |
+| 상황 하나만 겹쳐도 한부모 정책 통과 | 자격 상황 / 생애 단계 분리 |
+| 영역 2개 정책이 점수를 두 번 받음 | 주 영역 만점·보조 절반, 영역당 3개 |
+| 프로그램 22%가 지난 글 | 제목 날짜·글번호로 거름, 상시 서비스는 유지 |
+| **ok 정책 1,268건이 신청기간(`aplyYmd`)이 이미 지남** | 기본 필터에서 마감일 비교 (백엔드 이식 중 발견) |
+
+## 7. 남은 과제
+
+- 매일 실행 스케줄러 연결 (FastAPI 안 스케줄러 vs 외부 cron — 배포 환경 정해지면 결정)
+- 지역 편중: 프로그램은 대부분 서울. 다른 지역은 정책만 나온다
+- 원본 오류: 나이 상한·상황 태그가 빠진 '청소년쉼터 퇴소청소년 수당', 안산 센터로 연결된 '구로청년이룸' 글
+- v3에서 재사용한 분류 541건 재검토 옵션(`--recheck-reused`) 미구현
