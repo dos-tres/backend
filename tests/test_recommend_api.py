@@ -43,6 +43,18 @@ class RecommendApiTests(unittest.TestCase):
         self.assertIn("확인", data["notice"])
         self.assertTrue(all(p["kind"] == "program" for p in data["programs"]))
 
+    def test_income_condition_and_program_notice(self):
+        data = self.client.post("/api/recommendations", json=PERSONA).json()
+        self.assertIsNone(data["programs_notice"])   # 서울은 프로그램이 있다
+        for p in data["policies"]:
+            self.assertIn("income_condition", p)
+        # 서울 밖 대부분은 센터 프로그램 데이터가 없다 → 0건 이유를 알린다
+        daejeon = {**PERSONA, "profile": {**PERSONA["profile"], "sigungu_cd": "30170"}}
+        data = self.client.post("/api/recommendations", json=daejeon).json()
+        self.assertEqual(data["programs"], [])
+        self.assertEqual(data["programs_notice"]["code"], "no_program_data")
+        self.assertTrue(data["policies"])
+
     def test_same_input_same_result(self):
         a = self.client.post("/api/recommendations", json=PERSONA).json()
         b = self.client.post("/api/recommendations", json=PERSONA).json()
@@ -51,6 +63,13 @@ class RecommendApiTests(unittest.TestCase):
     def test_validation(self):
         bad_region = {**PERSONA, "profile": {**PERSONA["profile"], "sigungu_cd": "서울"}}
         self.assertEqual(self.client.post("/api/recommendations", json=bad_region).status_code, 422)
+        # 형식은 맞지만 원본에 없는 옛 코드 (광주·전남 통합 전 곡성 46720 → 지금은 12720)
+        old_code = {**PERSONA, "profile": {**PERSONA["profile"], "sigungu_cd": "46720"}}
+        response = self.client.post("/api/recommendations", json=old_code)
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["error"]["message"], "Unknown sigungu_cd")
+        new_code = {**PERSONA, "profile": {**PERSONA["profile"], "sigungu_cd": "12720"}}
+        self.assertEqual(self.client.post("/api/recommendations", json=new_code).status_code, 200)
         bad_answer = {**PERSONA, "checkin": {"economy": "very"}}
         self.assertEqual(self.client.post("/api/recommendations", json=bad_answer).status_code, 422)
         self.assertIn("/api/recommendations", self.client.get("/openapi.json").json()["paths"])

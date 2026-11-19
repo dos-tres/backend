@@ -30,6 +30,12 @@ class RowTests(unittest.TestCase):
     def test_policy_deadline_and_basic_filters(self):
         self.assertEqual(policy_deadline({"aplyYmd": "20261102 ~ 20261211"}), date(2026, 12, 11))
         self.assertIsNone(policy_deadline({"aplyYmd": ""}))
+        # 신청기간이 비어 있으면 사업 종료일로 마감 (끝난 축제·행사가 통과하지 않게)
+        self.assertEqual(policy_deadline({"aplyYmd": "", "bizPrdEndYmd": "20260919"}), date(2026, 9, 19))
+        self.assertEqual(policy_deadline({"aplyYmd": "20261102 ~ 20261211", "bizPrdEndYmd": "20261231"}),
+                         date(2026, 12, 11))
+        ended_event = policy("4", "끝난 축제", "P", aplyYmd="", bizPrdEndYmd="20260919")
+        self.assertFalse(matches_basic(ended_event, "11620", 24, TODAY))
         closed = policy("1", "지난 정책", "E", aplyYmd="20260101 ~ 20260919")
         self.assertFalse(matches_basic(closed, "11620", 24, TODAY))
         aged = policy("2", "34세까지", "E", age_max_clean=34)
@@ -68,6 +74,26 @@ class RuleTests(unittest.TestCase):
         workers = policy("20", "재직자 지원", "E", jobCd_nm="재직자")
         self.assertFalse(eligible(workers, PROFILE))
         self.assertTrue(eligible(workers, {**PROFILE, "job": "회사원"}))
+
+    def test_income_condition(self):
+        from app.recommend.service import income_condition
+        self.assertIsNone(income_condition({"earnCndSeCd_nm": "무관", "earn_max_clean": 0}))
+        self.assertEqual(income_condition({"earnCndSeCd_nm": "연소득", "earn_max_clean": 5000}),
+                         {"kind": "annual_income", "max_manwon": 5000, "text": "연소득 5,000만 원 이하"})
+        other = income_condition({"earnCndSeCd_nm": "기타", "earn_max_clean": 0, "earnEtcCn": "청년가구 중위소득\n150% 이하"})
+        self.assertEqual(other, {"kind": "other", "max_manwon": None, "text": "청년가구 중위소득 150% 이하"})
+        self.assertIsNone(income_condition({"earnCndSeCd_nm": "기타", "earnEtcCn": ""}))   # 설명이 없으면 보여줄 것 없음
+
+    def test_special_target_titles_are_not_recommended(self):
+        for name in ("부산 청년층 자살시도자 치료비 지원사업", "중독 예방·치료 지원(중독자 정신건강 지원사업)",
+                     "외국인근로자 고용안정 지원", "부산 전세피해 임차인 주거안정지원금 지원",
+                     "다문화청년 취업창업지원 사업", "2026 청년 부상 제대군인 상담센터 운영", "경계선지능청년지원",
+                     "(광양시)경계선 지능인 평생교육 지원사업"):
+            self.assertFalse(eligible(policy("s", name, "U"), PROFILE), name)
+        # 예방 교육·일반 상담은 누구나 대상이라 그대로 둔다
+        for name in ("청년 중심 마약류 중독예방 교육활동 지원", "(복지부) 26년 정신건강 심리상담 바우처사업",
+                     "공공근로 사업(청년실업대책)"):
+            self.assertTrue(eligible(policy("o", name, "U"), PROFILE), name)
 
     def test_interest_mapping_splits_mind_and_body_health(self):
         mind = policy("30", "청년 마음건강 지원", "U", mclsf="건강")

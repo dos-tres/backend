@@ -151,6 +151,23 @@ class CatalogDatabaseTests(unittest.TestCase):
             self.assertEqual(row.updated_at, before)
             self.assertEqual(len(self.history(session, target["id"])), 1)
 
+    def test_derived_column_change_is_written_without_history(self):
+        """원본은 같은데 변환 규칙이 바뀌어 파생 컬럼(deadline)만 달라져도 DB에 반영된다."""
+        policies = seed_rows("policy")
+        target = next(r for r in policies if r["deadline"] is not None)
+        with self.database.sessions() as session:
+            upsert_catalog(session, "policy", policies)
+            session.commit()
+            old_rule = {**target, "deadline": None}   # 예전 규칙으로 만든 행이 DB에 있는 상황
+            upsert_catalog(session, "policy", [old_rule if r["id"] == target["id"] else r for r in policies])
+            session.commit()
+            result = upsert_catalog(session, "policy", policies)
+            session.commit()
+            session.expire_all()
+            self.assertEqual(result["unchanged"], len(policies))
+            self.assertEqual(session.get(CatalogItem, target["id"]).deadline, target["deadline"])
+            self.assertEqual(len(self.history(session, target["id"])), 1)   # created 만
+
     def test_db_query_matches_file_fallback(self):
         with self.database.sessions() as session:
             upsert_catalog(session, "policy", seed_rows("policy"))

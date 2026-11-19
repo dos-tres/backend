@@ -53,6 +53,16 @@ def _fallback_rows() -> tuple[dict, ...]:
     return tuple(rows)
 
 
+@lru_cache(maxsize=1)
+def known_sigungu_codes() -> frozenset[str]:
+    """원본(온통청년)이 쓰는 시군구 코드 전체. 전국 정책의 zipCd 목록과 지역 정책·프로그램 코드를 합친다.
+
+    원본은 행정구역 개편을 반영한 코드를 쓴다 (예: 광주·전남 통합 → 12xxx, 강원 51xxx, 전북 52xxx).
+    옛 코드(예: 곡성 46720)를 받으면 후보가 0건이 되므로 추천 전에 걸러 낸다.
+    """
+    return frozenset(code for r in _fallback_rows() for code in r["region_cds"] if len(code) == 5)
+
+
 def from_files(sigungu_cd: str, age: int | None, today: date) -> list[dict]:
     return [r for r in _fallback_rows() if matches_basic(r, sigungu_cd, age, today)]
 
