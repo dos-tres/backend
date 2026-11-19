@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.checkin.questions import all_questions
 from app.checkin.summary import CheckinError, summarize
 from app.recommend.rules import JOB, SCHOOL
-from app.recommend.service import recommend
+from app.recommend.service import UnknownRegion, recommend
 
 router = APIRouter(prefix="/api", tags=["recommend"])
 
@@ -74,3 +74,6 @@ def recommendations(body: RecommendRequest, session: Session | None = Depends(op
         return recommend(session, body.profile.model_dump(), body.checkin)
     except CheckinError as exc:
         raise HTTPException(status_code=422, detail="Invalid check-in answers") from exc
+    except UnknownRegion as exc:
+        # 옛 행정코드(예: 광주·전남 통합 전 46xxx)를 쓰면 여기로 온다. 코드 목록은 원본(온통청년) 기준
+        raise HTTPException(status_code=422, detail="Unknown sigungu_cd") from exc

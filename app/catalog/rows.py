@@ -23,9 +23,16 @@ def _date(text: str | None) -> date | None:
 
 
 def policy_deadline(item: dict) -> date | None:
-    """aplyYmd 'YYYYMMDD ~ YYYYMMDD' 의 마지막 날짜. 상시·미기재면 None."""
+    """신청 마감일: aplyYmd 'YYYYMMDD ~ YYYYMMDD' 의 마지막 날짜.
+
+    신청기간이 비어 있으면 사업 종료일(bizPrdEndYmd)을 쓴다. 신청기간 없이 끝난 행사·사업
+    (예: 9월에 끝난 축제)이 마감 필터를 통과하지 않게 한다. 둘 다 없으면 상시·미기재로 보고 None.
+    """
     found = YMD.findall(item.get("aplyYmd") or "")
-    return _date(found[-1]) if found else None
+    if found:
+        return _date(found[-1])
+    biz_end = YMD.findall(item.get("bizPrdEndYmd") or "")
+    return _date(biz_end[-1]) if biz_end else None
 
 
 # 내용 변경이 아닌데 매일 바뀌는 필드. payload 에는 남기되 source_hash·변경 이력 비교에서는 뺀다.

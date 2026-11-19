@@ -77,9 +77,9 @@ def upsert_catalog(session: Session, kind: str, rows: list[dict], force: bool = 
             else_=item.updated_at)
         session.execute(stmt.on_conflict_do_update(
             index_elements=[item.id], set_=changed,
-            # 완전히 같은 행은 쓰지 않는다
-            where=or_(item.source_hash != excluded.source_hash, item.status != excluded.status,
-                      item.payload.is_distinct_from(excluded.payload)),
+            # 완전히 같은 행은 쓰지 않는다. 원본이 같아도 변환 규칙이 바뀌면(예: 마감일 계산) 파생 컬럼이 달라지므로
+            # source_hash 만이 아니라 저장하는 컬럼 전부를 비교한다. 이 경우 이력·updated_at 은 그대로다.
+            where=or_(*(getattr(item, c).is_distinct_from(excluded[c]) for c in chunk[0] if c != "id")),
         ))
 
     closed_ids: list[str] = []

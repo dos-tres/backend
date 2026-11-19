@@ -58,6 +58,13 @@ STAGE = {"기혼", "미혼", "임신·출산", "육아"}
 
 MAX_PER_DOMAIN = 3
 
+# ── 특정 대상만 신청할 수 있는데 기본 정보로 확인할 수 없는 사업 (제목 기준).
+# 자격 조건 원문(addAplyQlfcCndCn)은 '국가유공자 우대'처럼 여러 대상 중 하나로 적힌 경우가 많아 쓰지 않는다.
+# 예: 자살시도자 치료비(응급실 내원자), 중독자 치료, 전세사기 피해자, 외국인근로자, 다문화·북한이탈 청년, 제대군인,
+#     경계선지능인. (보호종료·발달장애처럼 상황 태그로 거를 수 있는 대상은 GATE 가 처리한다)
+SPECIAL_TARGET = re.compile(
+    r"자살\s*시도|중독자|외국인\s*근로자|전세\s*(?:사기|피해)|다문화|북한\s*이탈|탈북|제대\s*군인|경계선\s*지능")
+
 
 def _names(text: str | None) -> set[str]:
     return {x.strip() for x in (text or "").split(",") if x.strip()} - {"제한없음", "기타"}
@@ -72,8 +79,10 @@ def my_situations(profile: dict) -> set[str]:
 
 
 def eligible(row: dict, profile: dict) -> bool:
-    """나이·거주지·마감은 조회 단계(DB 또는 rows.matches_basic)에서 거른다. 여기서는 취업·학력·상황."""
+    """나이·거주지·마감은 조회 단계(DB 또는 rows.matches_basic)에서 거른다. 여기서는 특정 대상·취업·학력·상황."""
     payload = row["payload"]
+    if SPECIAL_TARGET.search(row["title"]):
+        return False
     if row["kind"] == "policy":
         jobs = _names(payload.get("jobCd_nm"))
         if jobs and profile.get("job") and not (jobs & JOB.get(profile["job"], set())):
