@@ -41,14 +41,90 @@ FastAPI 실행 기반을 구현했습니다. GET /healthz, Swagger UI(/docs), �
 
 ### 데이터 파이프라인
 
-```bash
-# .env에 YOUTH_POLICY_API_KEY, YOUTH_CENTER_API_KEY, GMS_KEY 입력 (.env.example 참고)
-python -m pipeline.run_daily             # 수집 → 분류 → catalog_items 적재
-python -m pipeline.load_catalog --seed   # 키 없이 seed 데이터만 DB에 적재
-python scripts/recommend_demo.py         # 페르소나 5명 추천 결과 확인
+정책(온통청년 API)과 청년센터 프로그램(크롤링)을 모아 LLM으로 분류하고, 서비스용 JSON과 DB(`catalog_items`)로 만듭니다. 운영(최종) 기준을 먼저 적고, 개발할 때 쓰는 임시 방법을 뒤에 적습니다.
+
+#### 운영 기준 (최종)
+
+```text
+[배포할 때 한 번]  python -m alembic upgrade head          (서버 시작과 분리해 명시적으로)
+[매일 한 번]       python -m pipeline.run_daily
+   정책  1 fetch → 2 classify ─────────────────────┐
+   센터  3 sync_centers → 4 seoul_orang → 5 gnuboard │→ data/runtime/serving/*.json → 8 load_catalog → PostgreSQL
+         → 6 merge → 7 classify ─────────────────────┘                                  (catalog_items + 변경 이력)
+[요청마다]         POST /api/recommendations → DB 조회 (DB가 없거나 비면 serving JSON으로 같은 계산)
 ```
 
-매일 결과는 `data/runtime/`(Git 제외)에 저장합니다. `data/seed/`는 첫 실행·CI용 결과물입니다.
+| 순서 | 단계 (`run_daily`가 순서대로 실행) | 필요한 키 | 결과 (`data/runtime/` 아래) |
+| --- | --- | --- | --- |
+| 1 | 정책 수집 `pipeline/policies/fetch.py` | 정책 | `policies/policies_raw.jsonl`(API 원본), `policies.csv`(정리본), `policy_regions.csv`, `policy_codes.csv`, `fill_rate.csv` |
+| 2 | 정책 분류 `pipeline/policies/classify.py` | LLM | `policies/policy_tags.csv`, **`serving/policies_serving.json`** |
+| 3 | 센터 목록 `pipeline/programs/crawl/sync_centers.py` | 센터 | `programs/centers.csv`, `centers_changes.csv` |
+| 4 | 서울청년센터 `pipeline/programs/crawl/seoul_orang.py` | 없음 | `programs/seoul_orang/programs.csv` |
+| 5 | 그누보드 센터 `pipeline/programs/crawl/gnuboard.py` | 없음 | `programs/gnuboard/sites.csv`, `boards.csv`, `posts.csv` |
+| 6 | 프로그램 통합 `pipeline/programs/crawl/merge.py` | 없음 | `programs/programs.csv` |
+| 7 | 프로그램 분류 `pipeline/programs/classify.py` | LLM | `programs/program_tags.csv`, **`serving/programs_serving.json`** |
+| 8 | DB 적재 `python -m pipeline.load_catalog` | 없음 | DB `catalog_items`, `catalog_item_changes` |
+
+| 키 (`.env` 또는 배포 환경의 비밀 설정) | 쓰는 단계 |
+| --- | --- |
+| `YOUTH_POLICY_API_KEY` | 1 정책 수집 (온통청년 청년정책 API) |
+| `YOUTH_CENTER_API_KEY` | 3 센터 목록 (온통청년 청년공간 API) |
+| `GMS_KEY`(또는 `OPENAI_API_KEY`). 선택: `OPENAI_BASE_URL`(비우면 GMS 주소), `LLM_MODEL`(비우면 gpt-4.1-mini) | 2·7 분류 |
+| `DATABASE_URL` | 8 DB 적재 (앱과 같은 설정) |
+
+운영에서 지켜지는 것 (구현 완료):
+
+- 실패 격리: 한 단계가 실패하면 그 묶음(정책 / 프로그램)의 뒤 단계와 DB 적재를 건너뛰고, DB에는 마지막으로 성공한 데이터가 남습니다. 종료 코드는 실패가 있으면 1입니다.
+- 적재 안전장치: 종류별 한 트랜잭션. 오늘 건수가 기존 활성 건수의 50% 미만이면 수집 이상으로 보고 적재하지 않습니다(`load_catalog --force`로만 무시).
+- 변경 감지: `source_hash`로 새로 생김·내용 바뀜·다시 열림·닫힘을 나눠 `catalog_item_changes`에 기록합니다. 오늘 목록에 없는 항목은 지우지 않고 `closed`로 둡니다.
+- 비용: LLM 분류는 캐시(`cache/*_tags_cache.jsonl`)로 새 글·바뀐 글만 호출합니다. 처음에는 `data/seed/cache/`에서 시작합니다.
+- 증분 수집: 서울청년센터·그누보드는 이미 본 글을 건너뜁니다. 서울청년센터 결과 파일이 없으면(첫 실행) 자동으로 목록 전체를 받습니다.
+
+배포 때 정할 것 (아직 없음): 매일 실행 위치(서버 안 스케줄러 vs 외부 cron), 운영 DB, `data/runtime/`을 실행 사이에 유지할 저장소(지워지면 분류 캐시·증분 기준이 사라져 LLM 비용과 수집 시간이 늘어남), 실패 알림. 자세한 기준은 [배포 문서](docs/DEPLOYMENT.md).
+
+프로그램은 서울청년센터 통합 사이트와 그누보드로 만든 센터 홈페이지만 수집해서 대부분 서울입니다([추천 문서](docs/RECOMMENDATION.md) 7장). 필드 정의는 [DATA_FIELDS](docs/DATA_FIELDS.md), 원본 API 필드는 [POLICY_FIELDS](docs/POLICY_FIELDS.md)·[CENTER_FIELDS](docs/CENTER_FIELDS.md), 크롤러는 [CRAWLER](docs/CRAWLER.md)에 있습니다.
+
+#### 개발할 때 (임시)
+
+키·비용·시간을 아끼거나 한 단계만 확인할 때 씁니다. 운영 매일 실행에는 쓰지 않습니다. 설치(아래 "설치와 로컬 실행")와 DB 시작(`docker compose up -d --wait db`, `python -m alembic upgrade head`)은 먼저 해 둡니다.
+
+```bash
+# 키 없이: 저장소에 포함된 결과(data/seed/serving, 정책 2,335 · 프로그램 169, 2026-11-19 기준)를 DB에
+python -m pipeline.load_catalog --seed
+python scripts/recommend_demo.py                         # 페르소나 5명 추천 결과
+
+# 전체를 돌리되 일부만
+python -m pipeline.run_daily --no-llm                    # LLM 없이 분류 캐시로만 (새 글은 분류 안 됨)
+python -m pipeline.run_daily --skip-crawl                # 센터 크롤링 빼고 정책만 갱신
+python -m pipeline.run_daily --no-load                   # DB 적재 없이 파일만
+
+# 한 단계씩
+python pipeline/policies/classify.py --limit 40          # 40건만 LLM 분류해 결과 확인
+python pipeline/policies/classify.py --dry-run           # LLM 호출 없이 프롬프트만 출력
+python pipeline/programs/crawl/sync_centers.py --from-seed   # 센터 API 키 없이 centers.csv 만들기 (4·5단계 준비)
+python pipeline/programs/crawl/seoul_orang.py --branch joonggu --max-detail 20   # 서울 한 지점만
+python pipeline/programs/crawl/gnuboard.py --site ch2030youth.kr                 # 그누보드 사이트 하나만
+python -m pipeline.load_catalog --kind program           # 한 종류만 적재
+```
+
+- 모든 명령은 저장소 루트에서 실행합니다. 결과는 `data/runtime/`(Git 제외)에 쌓이고 `data/seed/`는 바꾸지 않습니다.
+- `data/seed/`는 첫 실행·CI·DB 없는 환경용입니다. 갱신이 필요하면 `data/runtime/serving/`과 `cache/`에서 복사해 PR로 올립니다.
+- Windows PowerShell에서는 가상환경을 `.venv\Scripts\Activate.ps1`로 켜고, 위 명령의 경로 구분자는 그대로(`/`) 써도 됩니다.
+
+#### DB에서 결과 보기
+
+```bash
+# 종류·상태별 건수
+docker compose exec db psql -U dos_tres -d dos_tres -c "SELECT kind, status, count(*) FROM catalog_items GROUP BY 1, 2 ORDER BY 1, 2"
+# 정책 몇 건 (필터 컬럼)
+docker compose exec db psql -U dos_tres -d dos_tres -c "SELECT id, title, age_min, age_max, deadline, domains FROM catalog_items WHERE kind = 'policy' LIMIT 10"
+# 원본 전체(payload) 한 건
+docker compose exec db psql -U dos_tres -d dos_tres -c "SELECT jsonb_pretty(payload) FROM catalog_items WHERE kind = 'program' LIMIT 1"
+# 최근 변경 이력 (created / updated / reopened / closed)
+docker compose exec db psql -U dos_tres -d dos_tres -c "SELECT changed_at::date, kind, change_type, count(*) FROM catalog_item_changes GROUP BY 1, 2, 3 ORDER BY 1 DESC"
+```
+
+DBeaver·pgAdmin 같은 도구로 보려면 `127.0.0.1:5432`, DB·사용자 `dos_tres`, 비밀번호는 각자 `.env`의 `POSTGRES_PASSWORD`로 접속합니다. 테이블 컬럼 설명은 [추천 문서](docs/RECOMMENDATION.md) 2장에 있습니다.
 
 ## 설치와 로컬 실행
 
