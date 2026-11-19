@@ -9,6 +9,9 @@ from __future__ import annotations
 
 DOMAIN_NAMES = {"E": "경제", "P": "참여", "O": "외출", "C": "교류", "U": "지원망"}
 
+# 문항·선택지를 바꾸면 올린다. 저장된 응답(checkin_responses.question_version)이 어느 문항에 대한 답인지 구분한다
+QUESTION_VERSION = "draft-2026-11-19"
+
 # 모든 문항 공통 선택지. 고르면 그 영역은 우선순위 계산에서 빠진다
 COMMON_OPTIONS = [
     {"code": "unknown", "label": "모르겠어요"},
