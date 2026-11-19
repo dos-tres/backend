@@ -25,7 +25,30 @@
 
 ## 현재 상태
 
-FastAPI 실행 기반을 구현했습니다. GET /healthz, Swagger UI(/docs), 환경 설정, 개발용 CORS와 공통 오류 응답을 제공합니다. PostgreSQL·SQLAlchemy 연결, 요청별 DB 세션, Alembic과 DB 준비 상태 확인 GET /readyz를 추가했습니다. 서비스 세션·설문·정책·추천·AI 기능과 테이블은 아직 구현하지 않았습니다. 실제 배포도 완료하지 않았습니다.
+FastAPI 실행 기반을 구현했습니다. GET /healthz, Swagger UI(/docs), 환경 설정, 개발용 CORS와 공통 오류 응답을 제공합니다. PostgreSQL·SQLAlchemy 연결, 요청별 DB 세션, Alembic과 DB 준비 상태 확인 GET /readyz를 추가했습니다.
+
+정책·센터 프로그램 추천을 구현했습니다(브랜치 `feat/recommendation-pipeline`, 리뷰 대기). 자세한 내용은 [추천 문서](docs/RECOMMENDATION.md)에 있습니다.
+
+- 구현 완료: 온통청년 정책 수집·청년센터 프로그램 크롤링·LLM 분류 파이프라인(`pipeline/`), `catalog_items` 테이블(migration 0002)과 적재, 변경 이력 `catalog_item_changes`(migration 0003, source_hash 비교로 created·updated·reopened·closed 기록), 상태 체크 문항·요약 API, 추천 API. DB가 없거나 비어 있으면 `data/seed/`의 serving JSON으로 같은 계산을 합니다.
+- 계획: 매일 실행 스케줄러 연결, 운영 DB 적재, AI 비서 대화 연결. 서비스 세션·사용자 저장·인증은 아직 없습니다.
+- 배포: 하지 않았습니다.
+
+| 메서드 | 경로 | 설명 |
+| --- | --- | --- |
+| GET | /api/checkin/questions | 상태 체크 문항 |
+| POST | /api/checkin/summary | 답변 → 영역 수준 요약 (점수·위험 등급 없음) |
+| POST | /api/recommendations | 기본 정보 + 답변 → 정책 6 · 프로그램 4 |
+
+### 데이터 파이프라인
+
+```bash
+# .env에 YOUTH_POLICY_API_KEY, YOUTH_CENTER_API_KEY, GMS_KEY 입력 (.env.example 참고)
+python -m pipeline.run_daily             # 수집 → 분류 → catalog_items 적재
+python -m pipeline.load_catalog --seed   # 키 없이 seed 데이터만 DB에 적재
+python scripts/recommend_demo.py         # 페르소나 5명 추천 결과 확인
+```
+
+매일 결과는 `data/runtime/`(Git 제외)에 저장합니다. `data/seed/`는 첫 실행·CI용 결과물입니다.
 
 ## 설치와 로컬 실행
 
@@ -68,7 +91,7 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 개발 DB 데이터는 Docker named volume에 유지됩니다. `docker compose stop db`로 중지하고 `docker compose up -d --wait db`로 재개합니다. 초기화된 볼륨의 비밀번호는 .env 수정만으로 바뀌지 않으므로 기존 자격 증명을 유지하거나 별도 DB 변경 절차를 사용합니다. `down -v`는 데이터를 삭제하므로 일반 종료에 사용하지 않습니다.
 
-서버는 스키마를 자동 생성·변경하지 않습니다. 이번 baseline 0001은 기능 테이블 없이 Alembic 버전 테이블만 만듭니다. 이후 모델은 app.database.Base를 상속하고 migrations/env.py에 해당 모듈을 import한 뒤 아래 절차를 사용합니다.
+서버는 스키마를 자동 생성·변경하지 않습니다. baseline 0001은 Alembic 버전 테이블만, 0002는 정책·프로그램 카탈로그 `catalog_items`를, 0003은 변경 이력 `catalog_item_changes`를 만듭니다. 이후 모델은 app.database.Base를 상속하고 migrations/env.py에 해당 모듈을 import한 뒤 아래 절차를 사용합니다.
 
 ```bash
 python -m alembic revision --autogenerate -m "describe schema change"

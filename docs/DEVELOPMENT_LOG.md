@@ -1,5 +1,77 @@
 # 개발 로그
 
+## 2026-11-19 — catalog 변경 감지와 변경 이력 (`catalog_item_changes`)
+
+- 브랜치: `feat/recommendation-pipeline` (PR #6에 이어서)
+- 목적: `source_hash`를 저장만 하고 비교하지 않아 매일 전 행을 덮어쓰고 `updated_at`이 '마지막 적재 시각'이 되던 문제를 고치고, 원본 변경을 이력으로 남긴다.
+- 구현 완료와 배포 구분: 코드·마이그레이션·테스트 작성 완료. 운영 DB 적용·배포는 하지 않았다.
+
+### 결정
+
+- 해시는 serving 항목 전체의 SHA-256, 단 매일 바뀌는 정책 조회수 `inqCnt`는 뺀다. 조회수는 payload에는 계속 반영한다(추천 동점 정리에 씀).
+- 변경 종류: created / updated / reopened / closed. updated·reopened는 이전 payload와 바뀐 최상위 필드를 남긴다. 찜·신청 항목 변경 알림을 위해 덮어쓰기만 하는 방식 대신 이력 저장을 선택했다.
+- `updated_at`은 해시·상태가 바뀐 시각만 뜻한다.
+
+### 주요 변경
+
+- `app/catalog/rows.py`: `content_hash`, `changed_fields`, `VOLATILE_FIELDS`.
+- `app/catalog/models.py`: `CatalogItemChange`. `migrations/versions/0003_catalog_item_changes.py`.
+- `app/catalog/load.py`: `plan_changes`(순수 함수)로 분류 후 upsert. 완전히 같은 행은 쓰지 않고, 닫힘은 `RETURNING`으로 실제 닫힌 id만 이력에 남긴다. 반환값이 `{received, created, updated, reopened, unchanged, closed, previously_active}`로 바뀌었다.
+- 테스트: `test_catalog_changes.py` 신규(DB 없이), `test_catalog_db.py`에 이력·조회수 케이스 추가, `test_database.py` 0003 반영.
+- 문서: `docs/RECOMMENDATION.md` 2장, README, `docs/DEPLOYMENT.md`.
+
+### 실제 실행한 검증
+
+- 로컬 Docker Desktop(PostgreSQL 17 컨테이너 `db`·`db-test`)에서 실행.
+- `python -m unittest discover -s tests -v`: 37개 전부 통과(DB 통합 테스트 포함, `alembic check` 차이 없음).
+  - 처음 실행에서 `load.py`가 SQLAlchemy Result를 `dict.update`에 넘겨 실패한 것을 찾아 고쳤다(Result에 `keys()`가 있어 매핑으로 처리됨).
+- 개발 DB: `alembic upgrade head` → 0003. `load_catalog --seed` 1회차 created 정책 2,335·프로그램 169, 같은 데이터 2회차 전부 unchanged(이력 추가 없음).
+
+### 남은 작업
+
+- 이력 보관 기간·정리 정책, 찜·신청 기능과 연결한 변경 알림.
+- 해시 방식 변경 후 첫 적재에서 기존 행이 모두 `updated`(바뀐 필드 없음)로 한 번 기록된다. 운영 DB가 아직 없어 별도 처리는 하지 않았다.
+
+## 2026-11-19 — 정책·센터 프로그램 추천 파이프라인과 API
+
+- 브랜치: `feat/recommendation-pipeline` (origin/main `d11488c`에서 생성)
+- 목적: 로컬 `ai_hackathon` 폴더에서 만든 정책 수집·센터 크롤링·LLM 분류·추천 로직을 저장소 구조로 옮기고, DB 적재와 API로 연결.
+- 구현 완료와 배포 구분: 코드·seed 데이터·마이그레이션·API 구현 완료. 스케줄러 연결과 실제 배포·운영 DB 적재는 하지 않았다.
+
+### 결정
+
+- 상태 체크는 `docs/requirements.md` 방식(영역 5문항 + 만족도·바꾸고 싶은 영역·대면 부담·관심 분야). I5 또래 비교 점수는 쓰지 않는다. 진단처럼 보이지 않게, 점수·위험 등급 없이 사용자 답 그대로 영역 수준을 만든다.
+- 저장은 PostgreSQL 테이블 하나(`catalog_items`) + JSONB. 필터 컬럼만 컬럼으로 두고 원본은 `payload`. 이유는 docs/RECOMMENDATION.md 2장.
+- 추천 계산에는 LLM을 쓰지 않는다(분류만 하루 한 번, 캐시).
+
+### 주요 변경
+
+- `pipeline/`: 정책 fetch·classify, 프로그램 crawl(sync_centers·seoul_orang·gnuboard·merge)·classify, `llm.py`, `paths.py`, `load_catalog.py`, `run_daily.py`.
+- `data/seed/`: serving JSON(정책 2,335·프로그램 169), 분류 캐시, 센터 목록. `data/runtime/`은 gitignore.
+- `app/catalog/`(모델·행 변환·upsert·후보 조회), `migrations/versions/0002_catalog_items.py`.
+- `app/checkin/`, `app/recommend/`, `app/main.py` 라우터 등록.
+- `scripts/recommend_demo.py`, `tools/data_check/`.
+- 테스트: `test_checkin.py`, `test_recommend_rules.py`, `test_recommend_api.py`, `test_catalog_db.py`, `test_database.py`(0002 반영).
+- 문서: `docs/RECOMMENDATION.md` 신규, `POLICY_FIELDS.md`·`CENTER_FIELDS.md`·`DATA_FIELDS.md`·`CRAWLER.md`·`DATA_CHECK.md` 이관(경로 수정), README·`.env.example`·`requirements.txt`(requests, beautifulsoup4).
+
+### 실제 실행한 검증
+
+- 작업 환경에 FastAPI·SQLAlchemy가 없고 패키지 설치가 막혀 있어, 순수 로직 테스트만 로컬에서 실행: `test_checkin`·`test_recommend_rules` 14개 통과.
+- `python pipeline/policies/classify.py --no-llm`: 캐시만으로 ok 2,335건 재현, 이전 결과와 같은 보정 건수. 프로그램 classify `--no-llm`: ok 169건.
+- `sync_centers --from-seed` 동작, `run_daily` 키 없을 때 정책 단계 실패 후 프로그램 단계 계속 진행 확인.
+- `scripts/recommend_demo.py`: 페르소나 5명 결과 확인(예: 관악 고립 페르소나 → 고립·은둔 상담, 심리상담 바우처, 소셜다이닝, 관악 센터 상담 프로그램).
+- API·DB 테스트(마이그레이션 0002, upsert·closed 처리·50% 안전장치, DB/파일 결과 일치, API source)는 GitHub Actions PostgreSQL에서 확인한다. 결과는 PR 체크에 기록.
+
+### 발견한 문제
+
+- ok 정책 1,268건이 신청기간(`aplyYmd`)이 이미 지났다. 기본 필터에 마감일 비교를 넣었다.
+
+### 남은 작업
+
+- 매일 실행 스케줄러(서버 안 vs 외부 cron)는 배포 환경을 정한 뒤 결정.
+- 프로그램 지역 편중(대부분 서울), 원본 오류 일부, v3 재사용 분류 재검토 옵션.
+- AI 비서 대화와 추천 연결, 사용자 저장·인증.
+
 ## 2026-11-18 — PostgreSQL 공통 DB 기반
 
 - 브랜치: `chore/database-foundation`
