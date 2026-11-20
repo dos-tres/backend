@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.catalog.models import CatalogItem
+from app.catalog.regions import REGION_CODES, match_codes
 from app.catalog.rows import build_rows, matches_basic
 from pipeline import paths
 
@@ -26,12 +27,13 @@ COLUMNS = ("id", "kind", "status", "title", "age_min", "age_max", "region_cds", 
 
 def from_db(session: Session, sigungu_cd: str, age: int | None, today: date) -> list[dict]:
     item = CatalogItem
+    codes = list(match_codes(sigungu_cd))   # 사용자 코드 + 그 지역의 옛 코드 (예: 동탄구 → 화성시 41590)
     stmt = select(item).where(
         item.status == "ok",
         or_(item.deadline.is_(None), item.deadline >= today),
         or_(
-            and_(item.kind == "policy", item.region_cds.contains([sigungu_cd])),
-            and_(item.kind == "program", or_(item.region_cds.contains([sigungu_cd]),
+            and_(item.kind == "policy", item.region_cds.overlap(codes)),
+            and_(item.kind == "program", or_(item.region_cds.overlap(codes),
                                              item.sido_cds.contains([sigungu_cd[:2]]))),
         ),
     )
@@ -53,13 +55,18 @@ def _fallback_rows() -> tuple[dict, ...]:
     return tuple(rows)
 
 
-@lru_cache(maxsize=1)
 def known_sigungu_codes() -> frozenset[str]:
-    """원본(온통청년)이 쓰는 시군구 코드 전체. 전국 정책의 zipCd 목록과 지역 정책·프로그램 코드를 합친다.
+    """사용자가 보낼 수 있는 시군구 코드 = 거주지 선택 목록(app/catalog/regions.py)과 같다.
 
     원본은 행정구역 개편을 반영한 코드를 쓴다 (예: 광주·전남 통합 → 12xxx, 강원 51xxx, 전북 52xxx).
-    옛 코드(예: 곡성 46720)를 받으면 후보가 0건이 되므로 추천 전에 걸러 낸다.
+    옛 코드(예: 곡성 46720, 화성시 41590)를 받으면 후보가 0건이거나 빠지므로 추천 전에 걸러 낸다.
     """
+    return REGION_CODES
+
+
+@lru_cache(maxsize=1)
+def data_region_codes() -> frozenset[str]:
+    """서비스 데이터(정책 zipCd·프로그램 지역)에 실제로 나오는 5자리 코드. 목록 점검(테스트)용."""
     return frozenset(code for r in _fallback_rows() for code in r["region_cds"] if len(code) == 5)
 
 

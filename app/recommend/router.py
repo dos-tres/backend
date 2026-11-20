@@ -1,5 +1,6 @@
 """상태 체크·추천 API.
 
+GET  /api/regions             거주지 선택 목록 (시군구 code·label)
 GET  /api/checkin/questions   상태 체크 문항 (FE 설문 화면)
 POST /api/checkin/summary     응답 → 상태 요약 (저장하지 않음)
 POST /api/recommendations     기본 정보 + 상태 체크 응답 → 정책 6개 + 청년센터 프로그램 4개
@@ -16,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.catalog.regions import region_list
 from app.checkin.questions import all_questions
 from app.checkin.summary import CheckinError, summarize
 from app.recommend.rules import JOB, SCHOOL
@@ -53,6 +55,12 @@ def optional_db(request: Request) -> Iterator[Session | None]:
         return
     with database.sessions() as session:
         yield session
+
+
+@router.get("/regions")
+def regions() -> dict:
+    """거주지 선택 목록. FE는 이 code 를 profile.sigungu_cd 로 그대로 보낸다."""
+    return {"regions": region_list()}
 
 
 @router.get("/checkin/questions")
