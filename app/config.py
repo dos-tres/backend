@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     llm_model: str = Field("gpt-4.1-mini", validation_alias=AliasChoices("llm_model", "LLM_MODEL"))
     llm_timeout_seconds: float = Field(20.0, gt=0, le=60)
 
+    # 챗봇 신청: 대신 제출할 수 있는 항목 → 테스트 구글폼 주소 JSON (Git 제외 *.local.json, docs/APPLY.md 11장). 비우면 신청 가능한 항목 없음
+    apply_forms_path: str = Field("", validation_alias=AliasChoices("apply_forms_path", "APPLY_FORMS_PATH"))
+
     @field_validator("llm_base_url", "llm_model", mode="before")
     @classmethod
     def empty_means_default(cls, value, info):

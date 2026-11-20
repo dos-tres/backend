@@ -129,5 +129,27 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(len({r["title"][:8] for _, _, r in only_economy}), 6)
 
 
+class InterestSlotTests(unittest.TestCase):
+    def test_chosen_interest_gets_a_slot_even_with_low_score(self):
+        # 외출·대화 영역이 높고 관심 분야로 '일자리·취업'을 고른 사람 (2026-11-21 점검 사례)
+        summary = summarize({"outing": "high", "conversation": "high", "interests": ["일자리·취업"]})
+        rows = [policy(str(i), f"외출 활동 {i}", ["O"], mclsf="문화활동") for i in range(4)]
+        rows += [policy(str(10 + i), f"대화 모임 {i}", ["C"], mclsf="청년참여") for i in range(4)]
+        rows += [policy("99", "청년 인턴 직무캠프", ["E"], mclsf="취업")]
+        top = rank(rows, PROFILE, summary, 6)
+        titles = [r["title"] for _, _, r in top]
+        self.assertEqual(len(top), 6)
+        self.assertIn("청년 인턴 직무캠프", titles)
+        self.assertEqual(titles[-1], "청년 인턴 직무캠프")      # 맨 뒤 자리와 바꾼다
+        self.assertIn("관심 분야: 일자리·취업", top[-1][1])
+
+    def test_no_swap_when_interest_already_shown_or_missing(self):
+        summary = summarize({"outing": "high", "interests": ["일자리·취업", "해외 경험"]})
+        rows = [policy(str(i), f"외출 활동 {i}", ["O"], mclsf="문화활동") for i in range(3)]
+        rows += [policy("99", "청년 일자리 지원", ["O"], mclsf="취업")]   # 이미 위에 있음 / 해외 경험 항목은 없음
+        before = [r["title"] for _, _, r in rank(rows, PROFILE, summary, 3)]
+        self.assertIn("청년 일자리 지원", before)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@
 
 조이와 대화하다가 정책·프로그램을 골라 신청까지 가는 흐름이다. FE와 BE가 같이 보고 구현하는 문서다.
 
-- 상태: **설계 (구현 전)**. 2026-11-21 기준. 정해지지 않은 것은 12장에 있다.
+- 상태 (2026-11-21): **① 대신 제출(구글폼) API 구현** — `/api/apply/start`·`draft`·`submit`, 추천·대화 결과의 `apply_channel`(지금은 `form` 또는 `null`). **②③④ 갈래, 대화의 신청 버튼, FE 화면은 아직**. 실제 구현 형식은 9-5장. 정해지지 않은 것은 13장.
 - 범위: **시연·MVP용**. 실제 기관 구글폼에는 제출하지 않고, 우리가 원본을 따라 만든 **테스트용 구글폼**에만 제출한다(회의록: 실제 신청은 기관에 민폐라서). 그 밖의 사이트는 사용자가 직접 로그인·제출한다.
 - 저장: 하지 않는다(로그인 없는 MVP). 진행 중인 답·신청 기록은 FE가 로컬에 둔다. DB 영향은 10장.
 - 관련 문서: 대화 API [CHAT.md](CHAT.md), 기획 원칙 [requirements.md](requirements.md) 4·6장, 크롤러 [CRAWLER.md](CRAWLER.md)
@@ -184,6 +184,18 @@
 "applicant": {"name": "김둘셋", "birth_date": "2001-03-05", "phone": "010-0000-0000", "email": null}
 ```
 
+### 9-0. 지금 구현된 것 (FE 연결용 요약)
+
+| API | 구현 | 비고 |
+| --- | --- | --- |
+| `POST /api/recommendations`, `POST /api/chat` 결과 항목의 `apply_channel` | ✅ | 신청서 목록에 있으면 `"form"`, 아니면 `null`. `"form"`이면 카드에 [신청하기] |
+| `POST /api/apply/start` | ✅ ① form | 목록에 없는 항목은 `channel: null, available: false, reason: "not_supported"` + `official_url` (②③④ 안내는 아직) |
+| `POST /api/apply/draft` | ✅ ① 긴 답만 (`kind` 필드 없음) | 전화 대본·메시지(`call_script`·`message`)는 아직 |
+| `POST /api/apply/submit` | ✅ | |
+| `apply_method`·`documents`·`contacts`, 대화의 `apply` 버튼 | ❌ | 14장 2·6번 |
+
+시연용 항목 id: `demo:open`(신청 가능 테스트 폼), `demo:closed`(마감 테스트 폼). 연결할 실제 프로그램이 정해지면 그 id 로 바꾼다.
+
 ### 9-1. 기존 API에 붙는 것
 
 추천(`/api/recommendations`)·대화(`/api/chat`) 결과의 정책·프로그램 항목에 추가:
@@ -265,6 +277,39 @@
 {"channel": "visit", "place": "서울청년센터 양천", "when": "11월 17일(화) 17:00~19:00", "bring": [], "map_query": "서울청년센터 양천"}
 ```
 
+### 9-5. ① 구현된 형식 (2026-11-21)
+
+`start` 요청: `{"item_id": "demo:open", "applicant": {"name", "birth_date": "YYYY-MM-DD", "phone", "email"}, "profile": {...}}` (`applicant`·`profile` 은 없어도 됨 → 모두 질문으로 온다)
+
+`start` 응답 (신청 가능, 실제 테스트 폼으로 확인한 값)
+
+```json
+{
+  "channel": "form", "available": true,
+  "item": {"id": "demo:open", "title": "[둘셋 테스트] 11월 청년 베이킹 클래스 참여자 모집"},
+  "filled": [{"question_id": "q1", "label": "성명", "value": "김둘셋"}, {"question_id": "q2", "label": "만 나이", "value": "24"},
+             {"question_id": "q3", "label": "성별", "value": "여"}, {"question_id": "q4", "label": "연락처", "value": "010-0000-0000"}],
+  "questions": [
+    {"id": "q5", "kind": "long", "required": true, "prompt": "사는 동까지 알려 주세요. (관악구 ○○동)", "prefill": "관악구 ", "label": "거주지역 …"},
+    {"id": "q6", "kind": "long", "required": true, "prompt": "신청 이유를 적어야 하네요. 초안 써 드릴까요?", "can_draft": true, "hint": "…"},
+    {"id": "q7", "kind": "choice", "required": false, "prompt": "프로그램을 알게 된 경로를 알려주세요. (안 적어도 돼요)",
+     "options": ["센터 블로그", "…"], "other": true},
+    {"id": "q8", "kind": "agree", "required": true, "prompt": "개인정보 동의 내용을 읽어 보고 직접 골라 주세요.",
+     "options": ["동의합니다.", "동의하지 않습니다.(…)"], "description": "(동의 내용 원문)"}
+  ],
+  "replies": ["「…」 신청서를 같이 써 볼게요.", "알고 있는 정보로 채웠어요. 성명 김둘셋 · 만 나이 24 · 성별 여 · 연락처 010-0000-0000"],
+  "choices": [{"type": "apply_confirm", "label": "맞아요"}, {"type": "apply_edit", "label": "고칠래요"}]
+}
+```
+
+- `choices.type`: `apply_confirm`(다음 문항으로) / `apply_edit`(채운 값 수정 칸) / `message`(`text`를 대화로 보냄) / `record`(신청 기록·일정 저장) / `draft_accept`·`draft_retry`·`draft_edit`(초안 버튼).
+- 마감: `{"channel": "form", "available": false, "reason": "closed", "closed_message": "…", "replies": [...], "choices": [비슷한 지원 찾기, 다른 추천 보기]}`
+- 열 수 없음·지원 안 되는 폼: `reason: "unreachable" | "not_supported"`, `official_url`(있으면).
+
+`draft` 요청: `{"item_id", "question_id": "q6", "messages": [대화], "profile", "checkin", "previous": "다시 써 줘일 때"}` → `{"question_id", "draft", "replies", "choices"}`. 오류: LLM 없음·실패 503 `AI_UNAVAILABLE`, 초안 대상이 아닌 문항 404 `APPLY_NOT_AVAILABLE`, 폼 마감 409 `APPLY_FORM_CLOSED`.
+
+`submit` 요청: `{"item_id", "applicant", "answers": {"q1": "김둘셋", …, "q7": "직접 쓴 기타 답도 가능"}}` (`filled`의 값 + `questions`의 답. `multi`는 배열) → `{"status": "submitted", "confirmed_by": "server", "submitted_at", "item", "replies", "choices"}`. 오류: 422 `APPLY_INVALID`(`missing`·`invalid` 문항 id, 제출하지 않음) / 409 `APPLY_FORM_CLOSED` / 404 `APPLY_NOT_AVAILABLE` / 502 `APPLY_SUBMIT_FAILED`.
+
 ### 9-3. `POST /api/apply/draft` — 초안 (①②③ 공용)
 
 요청
@@ -337,14 +382,25 @@
 | 거주지·사는 곳 | `profile.sigungu_cd`의 이름 | "동까지"면 구까지 `prefill`하고 묻는다 |
 | 동의 | 채우지 않음 | 항상 묻는다 |
 
-- 제출: 폼의 공개 제출 주소(`formResponse`)에 문항 번호=답. 폼은 "로그인 필요"·"응답 1회 제한"을 끈다.
+- 제출: 폼의 공개 제출 주소(`formResponse`)에 문항 번호=답 + 폼 페이지의 숨은 값(`partialResponse`·`fbzx`·`submissionTimestamp` 등, 브라우저와 같게). 성공은 접수 완료 화면(입력 폼이 다시 나오지 않음)으로 판단한다. 폼은 "로그인 필요"·"응답 1회 제한"을 끈다.
 - 테스트 폼 만들기: [`scripts/create_test_forms.gs`](../scripts/create_test_forms.gs)를 구글 Apps Script에서 실행하면 실제 청년센터 신청서와 같은 양식의 테스트 폼 2개(신청 가능·마감)가 생긴다.
 
 ## 12. 개인정보
 
 - 이름·생년월일·연락처는 FE 로컬에 있고 ① 신청할 때만 BE로 보낸다. BE는 저장·로그 기록을 하지 않는다.
 - LLM(초안)에는 이름·연락처를 보내지 않는다.
-- ① 제출 대상은 우리가 만든 테스트 폼뿐. 시연은 가짜 이름과 팀원 번호.
+- ① 제출 대상은 우리가 만든 테스트 폼뿐.
+- **대회 원칙: 실제 개인정보 금지 → 가상·샘플 데이터** (공식 첨부 '대회 안내문'·'프로젝트 소개서 양식', `../docs/프로젝트소개서_초안.md`). 시연·테스트 폼 응답·화면 캡처·대화 예시는 가상 페르소나 정보로만 채운다(이름 예: 김둘셋, 연락처 예: 010-0000-0000). 소스코드 저장소 링크를 심사용으로 낼 수 있으므로 저장소에도 실제 개인정보를 두지 않는다.
+
+Git에 올려도 되는 것 / 안 되는 것
+
+| 항목 | Git | 이유 |
+| --- | --- | --- |
+| 실제 청년센터·정책 공고의 신청 링크(구글폼 포함) | 올려도 됨 (이미 `data/seed`에 있음) | 기관이 공개한 공고 정보. 개인정보가 아니다 |
+| 팀원 전화번호(전화 연결 시연용) | **안 됨** → `.env` | 개인정보 |
+| 우리 테스트 구글폼 응답용 주소 | 안 올림 → `apply_forms.local.json`, 배포 때는 환경변수 | 개인정보는 아니지만, 주소가 퍼지면 누구나 응답을 넣을 수 있어 시연 중 장난 응답이 보일 수 있다 |
+| 테스트 구글폼 편집용 주소 | 안 됨 (BE에 필요 없음) | 만든 사람의 구글 계정에 묶인 관리 주소 |
+| 테스트 폼에 들어온 응답(내보낸 파일·캡처) | **안 됨** | 신청자 정보. 시연 뒤 폼에서 응답을 지운다(폼의 동의 문구 "시연 종료 후 즉시 삭제") |
 
 ## 13. 정해야 할 것
 
@@ -358,7 +414,7 @@
 
 ## 14. 구현 순서 (BE)
 
-1. **① 대신 제출**: 신청서 목록, 구글폼 읽기(문항·마감), `start`(form), `submit`, `draft`(form_answer)
+1. ✅ **① 대신 제출**: 신청서 목록, 구글폼 읽기(문항·마감), `start`(form), `submit`, `draft`(form_answer) — 2026-11-21. 실제 테스트 폼으로 `start`(신청 가능·마감) 확인. 실제 제출·실제 LLM 초안은 아직 확인 전
 2. **공통 데이터**: `apply_channel` 규칙, 프로그램 신청 방법·연락처 추출(크롤러), 정책 신청 방법·서류 꺼내기, 추천·대화 결과에 9-1 필드
 3. **② 같이 신청**: 공공서비스예약 단계 안내·주소 찾기(Open API), 나머지는 일반 단계
 4. **③ 대신 준비**: `draft`(call_script·message)

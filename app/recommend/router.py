@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.apply import registry as apply_registry
 from app.catalog.regions import region_list
 from app.checkin.questions import all_questions
 from app.checkin.summary import CheckinError, summarize
@@ -77,9 +78,10 @@ def checkin_summary(body: CheckinRequest) -> dict:
 
 
 @router.post("/recommendations")
-def recommendations(body: RecommendRequest, session: Session | None = Depends(optional_db)) -> dict:
+def recommendations(body: RecommendRequest, request: Request, session: Session | None = Depends(optional_db)) -> dict:
     try:
-        return recommend(session, body.profile.model_dump(), body.checkin)
+        result = recommend(session, body.profile.model_dump(), body.checkin)
+        return apply_registry.mark(result, apply_registry.load(request.app.state.settings.apply_forms_path))
     except CheckinError as exc:
         raise HTTPException(status_code=422, detail="Invalid check-in answers") from exc
     except UnknownRegion as exc:

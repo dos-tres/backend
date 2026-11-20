@@ -15,6 +15,7 @@ from starlette.middleware.cors import CORSMiddleware
 from app.config import Settings
 from app.database import Database, DatabaseNotConfigured, get_db
 from app.chat.llm import LLMUnavailable, OpenAICompatible
+from app.apply.router import router as apply_router
 from app.chat.router import router as chat_router
 from app.recommend.router import router as recommend_router
 
@@ -73,6 +74,7 @@ def create_app(settings: Settings | None = None) -> CORSMiddleware:
 
     api.include_router(recommend_router)
     api.include_router(chat_router)
+    api.include_router(apply_router)
 
     @api.exception_handler(LLMUnavailable)
     async def llm_unavailable(request: Request, exc: LLMUnavailable) -> JSONResponse:
