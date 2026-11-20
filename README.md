@@ -47,7 +47,7 @@ FastAPI 실행 기반을 구현했습니다. GET /healthz, Swagger UI(/docs), �
 | POST | /api/apply/draft | 신청서 긴 답 초안 (LLM 키 필요) |
 | POST | /api/apply/submit | 사용자가 제출을 눌렀을 때 구글폼 제출 |
 
-**FE 연결 안내: [docs/FRONTEND.md](docs/FRONTEND.md)** — 화면별 API, 실제 응답 예시, 오류 처리, FE에서 바꿔 보내는 값(지역 코드 13개 불일치 포함).
+**FE 연결 안내: [docs/FRONTEND.md](docs/FRONTEND.md)** — 화면별 API, 실제 응답 예시, 오류 처리, FE와 맞춰야 하는 값 14가지.
 
 ### 데이터 파이프라인
 
