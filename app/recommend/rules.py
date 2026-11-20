@@ -78,10 +78,13 @@ def my_situations(profile: dict) -> set[str]:
     return mine
 
 
-def eligible(row: dict, profile: dict) -> bool:
-    """나이·거주지·마감은 조회 단계(DB 또는 rows.matches_basic)에서 거른다. 여기서는 특정 대상·취업·학력·상황."""
+def eligible(row: dict, profile: dict, allow_special: bool = False) -> bool:
+    """나이·거주지·마감은 조회 단계(DB 또는 rows.matches_basic)에서 거른다. 여기서는 특정 대상·취업·학력·상황.
+
+    allow_special: 사용자가 직접 찾은 경우(대화 검색)에는 특정 대상 사업도 보여준다. 자동 추천에서는 False.
+    """
     payload = row["payload"]
-    if SPECIAL_TARGET.search(row["title"]):
+    if not allow_special and SPECIAL_TARGET.search(row["title"]):
         return False
     if row["kind"] == "policy":
         jobs = _names(payload.get("jobCd_nm"))

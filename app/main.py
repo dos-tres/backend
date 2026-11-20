@@ -14,6 +14,8 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.config import Settings
 from app.database import Database, DatabaseNotConfigured, get_db
+from app.chat.llm import LLMUnavailable, OpenAICompatible
+from app.chat.router import router as chat_router
 from app.recommend.router import router as recommend_router
 
 logger = logging.getLogger(__name__)
@@ -49,6 +51,9 @@ def create_app(settings: Settings | None = None) -> CORSMiddleware:
     api = FastAPI(title="DOS TRES API", version="0.1.0", debug=False, lifespan=lifespan)
     api.state.settings = settings
     api.state.database = None
+    llm_key = settings.llm_api_key.get_secret_value()
+    api.state.chat_model = (OpenAICompatible(llm_key, settings.llm_base_url, settings.llm_model,
+                                             settings.llm_timeout_seconds) if llm_key else None)
 
     @api.get("/healthz", response_model=HealthResponse, tags=["health"])
     async def healthz() -> HealthResponse:
@@ -67,6 +72,12 @@ def create_app(settings: Settings | None = None) -> CORSMiddleware:
         return HealthResponse()
 
     api.include_router(recommend_router)
+    api.include_router(chat_router)
+
+    @api.exception_handler(LLMUnavailable)
+    async def llm_unavailable(request: Request, exc: LLMUnavailable) -> JSONResponse:
+        # 예시 답변으로 대신하지 않는다. 위기 안내는 LLM 없이 이미 처리됐다
+        return error_response(503, "AI_UNAVAILABLE", "AI assistant unavailable")
 
     @api.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException) -> JSONResponse:

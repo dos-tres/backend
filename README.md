@@ -30,8 +30,9 @@ FastAPI 실행 기반을 구현했습니다. GET /healthz, Swagger UI(/docs), �
 정책·센터 프로그램 추천을 구현했습니다(브랜치 `feat/recommendation-pipeline`, 리뷰 대기). 자세한 내용은 [추천 문서](docs/RECOMMENDATION.md)에 있습니다.
 
 - 구현 완료: 온통청년 정책 수집·청년센터 프로그램 크롤링·LLM 분류 파이프라인(`pipeline/`), `catalog_items` 테이블(migration 0002)과 적재, 변경 이력 `catalog_item_changes`(migration 0003, source_hash 비교로 created·updated·reopened·closed 기록), 상태 체크 문항·요약 API, 추천 API, 거주지 목록 API(옛 행정코드로 표시된 정책도 새 구에 연결). DB가 없거나 비어 있으면 `data/seed/`의 serving JSON으로 같은 계산을 합니다.
-- 구현 완료(테이블만, 브랜치 `feat/user-schema`): 회원 테이블 `users`·`user_profiles`·`user_consents`·`checkin_responses`(migration 0004). 가입·로그인·프로필 저장 API와 인증은 아직 없습니다. 로그인 수단·세션 테이블은 로그인 방식이 정해지면 추가하며, 계획은 모델 파일 주석에 적어 두었습니다. 전체 테이블 설명은 [DB 테이블 안내](docs/DATABASE.md).
-- 계획: 매일 실행 스케줄러 연결, 운영 DB 적재, AI 비서 대화 연결, 로그인 방식 결정 후 인증·회원 API. 서비스 세션·사용자 저장은 아직 없습니다.
+- 구현 완료(테이블만): 회원 테이블 `users`·`user_profiles`·`user_consents`·`checkin_responses`(migration 0004). 가입·로그인·프로필 저장 API와 인증은 아직 없습니다. 로그인 수단·세션 테이블은 로그인 방식이 정해지면 추가하며, 계획은 모델 파일 주석에 적어 두었습니다. 전체 테이블 설명은 [DB 테이블 안내](docs/DATABASE.md).
+- 구현 완료(브랜치 `feat/ai-chat`, 리뷰 전): AI 비서 대화 `POST /api/chat`. 위기 신호는 규칙으로 먼저 확인해 109 등 연락처를 안내하고, LLM은 사용자 말에서 상태 체크 답·관심 분야·찾는 지원을 알아듣기만 합니다. 추천·검색 결과는 규칙 엔진과 DB에서 나옵니다. 말투는 일을 대신 해 주고 결과를 알려 주는 비서(해요체, 말풍선 여러 개, 결과 → 다음 행동 제안 버튼)이고, 결과 말풍선은 서버가 실제 결과로 만듭니다. 검증: 위기 표현 32/32 탐지·오탐 0, LLM 점검 28개 × 3회 84/84, 여러 턴 시나리오 19개([대화 시나리오](docs/CHAT_SCENARIOS.md)), 응답 중앙값 약 1.8초. 프롬프트·모델을 바꾸면 `python scripts/chat_eval.py`(LLM 호출 비용 있음)로 다시 확인합니다. 자세한 내용은 [대화 문서](docs/CHAT.md).
+- 계획: 매일 실행 스케줄러 연결, 운영 DB 적재, 로그인 방식 결정 후 인증·회원 API, 대화 저장(인증 이후)·사용량 상한, FE 연결. 서비스 세션·사용자 저장은 아직 없습니다.
 - 배포: 하지 않았습니다.
 
 | 메서드 | 경로 | 설명 |
@@ -40,6 +41,7 @@ FastAPI 실행 기반을 구현했습니다. GET /healthz, Swagger UI(/docs), �
 | GET | /api/checkin/questions | 상태 체크 문항 |
 | POST | /api/checkin/summary | 답변 → 영역 수준 요약 (점수·위험 등급 없음) |
 | POST | /api/recommendations | 기본 정보 + 답변 → 정책 6 · 프로그램 4 |
+| POST | /api/chat | 대화 한 턴 → 답장, 알아들은 상태 체크 답, 선택지, 추천·검색 결과 (LLM 키 필요, 위기 안내는 키 없이도) |
 
 ### 데이터 파이프라인
 
