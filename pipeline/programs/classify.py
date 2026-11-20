@@ -91,7 +91,34 @@ def stale_reason(r, today):
     months = [int(m) for m in MONTH.findall(t) if 1 <= int(m) <= 12]
     if months and max(months) < today.month:
         return "지난 달"
+    # 마감일·진행 종료일이 없는 '상시' 글은 본문(요약)의 날짜도 본다 (점검: 9월 체육대회·8월 북캉스가 11월에 '상시'로 추천됨)
+    # 상담·공간처럼 계속 운영하는 서비스는 본문에 지난 시작일이 있어도 지금 운영 중일 수 있어 보지 않는다
+    if not r.get("prog_end") and not is_evergreen(r):
+        dates = body_dates(r.get("summary", ""), today.year)
+        if dates and max(dates) < today:
+            return "본문 날짜 지남"
     return None
+
+
+# 본문 날짜: 2026년 9월 12일 / 26. 8. 27. / 2026.08.27 / 9월 12일(올해로 본다)
+FULL_DATE = re.compile(r"(?<!\d)(20\d\d|\d\d)\s*[.년/-]\s*(\d{1,2})\s*[.월/-]\s*(\d{1,2})(?!\d)")
+KO_MONTH_DAY = re.compile(r"(?<![\d.])(\d{1,2})\s*월\s*(\d{1,2})\s*일")
+
+
+def body_dates(text, year):
+    found = []
+    for y, m, d in FULL_DATE.findall(text):
+        y = int(y) + (2000 if len(y) == 2 else 0)
+        found.append((y, int(m), int(d)))
+    rest = FULL_DATE.sub(" ", text)
+    found += [(year, int(m), int(d)) for m, d in KO_MONTH_DAY.findall(rest)]
+    out = []
+    for y, m, d in found:
+        try:
+            out.append(dt.date(y, m, d))
+        except ValueError:
+            continue
+    return out
 
 
 RECENT_DAYS = 90   # 마감일·날짜가 없는 '상시' 글은 이 기간 안에 올라온 것만 쓴다
@@ -204,7 +231,7 @@ def load_targets(today):
     for r in evergreen:
         r["_evergreen"] = True
     picked = newest_per_title(recent + evergreen)
-    print(f"신청 가능 {len(active)}건 → 제목 날짜가 지난 글 {len(active) - len(fresh)}건 제외, "
+    print(f"신청 가능 {len(active)}건 → 날짜가 지난 글(제목·본문) {len(active) - len(fresh)}건 제외, "
           f"마감일 없이 {RECENT_DAYS}일보다 오래된 글 {len(old)}건 중 상시 서비스 {len(evergreen)}건만 유지, "
           f"반복 게시 {len(recent) + len(evergreen) - len(picked)}건 정리 → {len(picked)}건 (서울 글번호 기준 {cutoff})")
     return picked
