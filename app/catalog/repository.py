@@ -16,7 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.catalog.models import CatalogItem
-from app.catalog.regions import REGION_CODES, match_codes
+from app.catalog.regions import ACCEPTED_CODES, match_codes
 from app.catalog.rows import build_rows, matches_basic
 from pipeline import paths
 
@@ -56,12 +56,13 @@ def _fallback_rows() -> tuple[dict, ...]:
 
 
 def known_sigungu_codes() -> frozenset[str]:
-    """사용자가 보낼 수 있는 시군구 코드 = 거주지 선택 목록(app/catalog/regions.py)과 같다.
+    """사용자가 보낼 수 있는 시군구 코드 = 거주지 선택 목록(app/catalog/regions.py) + 일반구가 있는 시의 '시 전체'.
 
     원본은 행정구역 개편을 반영한 코드를 쓴다 (예: 광주·전남 통합 → 12xxx, 강원 51xxx, 전북 52xxx).
-    옛 코드(예: 곡성 46720, 화성시 41590)를 받으면 후보가 0건이거나 빠지므로 추천 전에 걸러 낸다.
+    옛 코드(예: 곡성 46720, 인천 중구 28110)를 받으면 후보가 0건이거나 빠지므로 추천 전에 걸러 낸다.
+    '시 전체'(예: 수원시 41110, 화성시 41590)는 그 시의 모든 구로 찾는다(regions.match_codes).
     """
-    return REGION_CODES
+    return ACCEPTED_CODES   # 목록 256개 + 일반구가 있는 시의 '시 전체' 13개 (regions.CITY_DISTRICTS)
 
 
 @lru_cache(maxsize=1)

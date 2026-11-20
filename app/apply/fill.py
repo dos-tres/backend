@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 
 from app.apply.gform import Question
-from app.catalog.regions import region_list
+from app.catalog.regions import region_name
 
 # (문항 제목 정규식, 채울 값 이름) — 위에서부터 처음 맞는 것
 RULES: list[tuple[re.Pattern, str]] = [
@@ -26,10 +26,8 @@ DRAFTABLE = re.compile(r"이유|동기|계기|소개|기대|각오|목표|하고
 def _region_name(sigungu_cd: str | None) -> str | None:
     if not sigungu_cd:
         return None
-    for r in region_list():
-        if r["code"] == sigungu_cd:
-            return r["sigungu"]
-    return None
+    name = region_name(sigungu_cd)
+    return name[1] if name else None
 
 
 def _value(key: str, applicant: dict, profile: dict) -> str | None:

@@ -286,11 +286,40 @@ for _old, _new in LEGACY.items():
         _PREVIOUS[_code] = _PREVIOUS.get(_code, ()) + (_old,)
 
 
+# 일반구가 있는 시의 '시 전체' 코드 → 그 시의 구 코드 (2026-11-21).
+# 목록(/api/regions)에는 구 코드만 있지만, FE는 공식 법정동 사전(시군구 269개)으로 '수원시 전체'도 고를 수 있다.
+# 그 코드로 추천을 부르면 422 가 나던 것을, 그 시의 모든 구를 합쳐 찾도록 받는다.
+CITY_CODES = ("41110", "41130", "41170", "41190", "41270", "41280", "41460", "41590",   # 수원 성남 안양 부천 안산 고양 용인 화성
+              "43110", "44130", "47110", "48120", "52110")                              # 청주 천안 포항 창원 전주
+CITY_DISTRICTS: dict[str, tuple[str, ...]] = {
+    city: tuple(sorted(code for code in REGION_CODES if code[:4] == city[:4] and code != city)) for city in CITY_CODES
+}
+ACCEPTED_CODES = REGION_CODES | frozenset(CITY_DISTRICTS)   # 추천·대화 요청에서 받는 코드
+
+
+def region_name(code: str) -> tuple[str, str] | None:
+    """(시도, 시군구 이름). '시 전체' 코드는 시 이름 (예: 41110 → 경기도, 수원시)."""
+    names = {c: (sido, sigungu) for c, sido, sigungu in REGIONS}
+    if code in names:
+        return names[code]
+    districts = CITY_DISTRICTS.get(code)
+    if districts and districts[0] in names:
+        sido, sigungu = names[districts[0]]
+        return sido, sigungu.split()[0]
+    return None
+
+
 def region_list() -> list[dict]:
     return [{"code": code, "sido": sido, "sigungu": sigungu, "label": f"{sido} {sigungu}"}
             for code, sido, sigungu in REGIONS]
 
 
 def match_codes(sigungu_cd: str) -> tuple[str, ...]:
-    """정책·프로그램의 거주지 코드와 비교할 코드: 사용자 코드 + 그 지역의 옛 코드."""
+    """정책·프로그램의 거주지 코드와 비교할 코드: 사용자 코드 + 그 지역의 옛 코드.
+    '시 전체' 코드면 그 시의 모든 구 코드(와 각 구의 옛 코드)를 합친다."""
+    if sigungu_cd in CITY_DISTRICTS:
+        codes = [sigungu_cd]
+        for district in CITY_DISTRICTS[sigungu_cd]:
+            codes += [district, *_PREVIOUS.get(district, ())]
+        return tuple(dict.fromkeys(codes))
     return (sigungu_cd, *_PREVIOUS.get(sigungu_cd, ()))
