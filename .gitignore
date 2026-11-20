@@ -6,3 +6,6 @@ __pycache__/
 !.env.example
 # 파이프라인이 매일 만드는 파일 (data/seed 는 커밋한다)
 data/runtime/
+
+# 시연용 테스트 구글폼 목록 (Git 제외, docs/APPLY.md 11장)
+*.local.json

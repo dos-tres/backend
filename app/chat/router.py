@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.apply import registry as apply_registry
 from app.chat.service import respond
 from app.checkin.summary import CheckinError
 from app.recommend.router import Profile, optional_db
@@ -35,8 +36,10 @@ def chat(body: ChatRequest, request: Request, session: Session | None = Depends(
     if body.messages[-1].role != "user":
         raise HTTPException(status_code=422, detail="Last message must be from user")
     try:
-        return respond(session, request.app.state.chat_model, [m.model_dump() for m in body.messages],
+        data = respond(session, request.app.state.chat_model, [m.model_dump() for m in body.messages],
                        body.profile.model_dump() if body.profile else None, body.checkin)
+        apply_registry.mark(data.get("results"), apply_registry.load(request.app.state.settings.apply_forms_path))
+        return data
     except CheckinError as exc:
         raise HTTPException(status_code=422, detail="Invalid check-in answers") from exc
     except UnknownRegion as exc:

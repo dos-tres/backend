@@ -87,3 +87,16 @@ def find_candidates(session: Session | None, sigungu_cd: str, age: int | None, t
             logger.warning("catalog DB 조회 실패, 서비스 JSON으로 대신함: %s", type(exc).__name__)
             session.rollback()
     return from_files(sigungu_cd, age, today), "file"
+
+
+def get_item(session: Session | None, item_id: str) -> dict | None:
+    """id 로 항목 하나 (신청 화면의 제목·소개용). DB 우선, 없거나 실패하면 서비스 JSON."""
+    if session is not None:
+        try:
+            row = session.get(CatalogItem, item_id)
+            if row is not None:
+                return {c: getattr(row, c) for c in COLUMNS}
+        except SQLAlchemyError as exc:
+            logger.warning("catalog DB 조회 실패, 서비스 JSON으로 대신함: %s", type(exc).__name__)
+            session.rollback()
+    return next((r for r in _fallback_rows() if r["id"] == item_id), None)
