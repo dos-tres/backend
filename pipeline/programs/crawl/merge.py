@@ -11,10 +11,14 @@
   - is_active: Y(지금 신청 가능/상시) / N(마감) / unknown(기간 정보를 못 찾음)
   - 그누보드 '공지' 게시판 글은 프로그램이 아닌 것(휴관 안내 등)도 섞여 있어 kind=notice 로 구분
 """
+import json
 import re
 from datetime import date
 
-from common import DATA, now, read_csv, write_csv
+import requests
+
+from common import DATA, UA, now, read_csv, write_csv
+from pipeline import paths
 
 OUT = DATA / "programs.csv"
 COLS = ["program_id", "source", "kind", "center_sns", "center_names", "region_cds", "sido_cd",
@@ -24,8 +28,68 @@ COLS = ["program_id", "source", "kind", "center_sns", "center_names", "region_cd
         "source_name", "first_seen", "last_seen", "merged_at"]
 
 TODAY = date.today().isoformat()
-FORM_RE = re.compile(r"https?://(?:forms\.gle|docs\.google\.com/forms|naver\.me|form\.naver\.com|"
-                     r"[\w.-]*typeform\.com|tally\.so|bit\.ly)[^\s<>\"']*")
+FORM_RE = re.compile(r"https?://(?:forms\.gle|docs\.google\.com/forms|form\.naver\.com|"
+                     r"[\w.-]*typeform\.com|tally\.so)[^\s<>\"']*")
+
+# ---------- 단축 링크 풀기 ----------
+# 본문의 신청 링크가 bit.ly·naver.me 같은 단축 링크면 실제 주소(구글폼·네이버폼·예약 페이지 등)를 알 수 없다.
+# 2026-11-21 점검: bit.ly 4개가 실제로는 구글폼이었다. merge 때 한 번 열어 최종 주소로 바꾸고, 결과는 캐시에 둔다
+# (같은 링크를 매일 다시 열지 않음). 열지 못하면 단축 링크를 그대로 두고 신청폼 후보로 본다(이전 동작).
+SHORT_RE = re.compile(r"https?://(?:www\.)?(?:bit\.ly|naver\.me|tinyurl\.com|zrr\.kr|iii\.im|m\.site\.naver\.com|"
+                      r"han\.gl|me2\.do|url\.kr|buly\.kr|vo\.la|t\.ly|lrl\.kr|abit\.ly|goo\.gl)/", re.I)
+# 서버 이동(301/302)이 아니라 페이지 안의 스크립트·meta 로 이동하는 단축 서비스용 (zrr.kr, iii.im 등)
+JS_REDIRECT_RE = re.compile(r"""(?:location(?:\.href)?\s*=\s*|location\.replace\(\s*|"""
+                            r"""http-equiv=["']?refresh["']?[^>]*?url=)["']?(https?://[^"'\s<>)]+)""", re.I)
+SHORT_CACHE = "short_links.json"
+
+
+def fetch_final_url(url, timeout=10):
+    """단축 링크를 열어 최종 주소. 실패하거나 끝까지 단축 링크면 None."""
+    try:
+        res = requests.get(url, headers={"User-Agent": UA}, timeout=timeout, allow_redirects=True)
+    except requests.RequestException:
+        return None
+    final = res.url
+    if SHORT_RE.match(final):
+        m = JS_REDIRECT_RE.search(res.text[:50000])
+        final = m.group(1) if m else None
+    return final if final and not SHORT_RE.match(final) else None
+
+
+class ShortLinks:
+    """단축 링크 → 최종 주소. 성공한 것만 캐시한다(실패는 다음 실행에서 다시 시도)."""
+
+    def __init__(self, path=None, fetch=fetch_final_url, enabled=True):
+        self.path, self.fetch, self.enabled = path, fetch, enabled
+        self.cache = {}
+        if path and path.exists():
+            self.cache = json.loads(path.read_text(encoding="utf-8"))
+        self.resolved = self.failed = 0
+
+    def resolve(self, url):
+        if not SHORT_RE.match(url):
+            return url
+        if url in self.cache:
+            return self.cache[url]
+        final = self.fetch(url) if self.enabled else None
+        if final:
+            self.cache[url] = final
+            self.resolved += 1
+            return final
+        self.failed += 1
+        return url
+
+    def save(self):
+        if self.path and self.resolved:
+            paths.write_atomic(self.path, json.dumps(self.cache, ensure_ascii=False, indent=1, sort_keys=True))
+
+
+def is_form(url):
+    """신청폼 링크. 풀지 못한 단축 링크도 후보로 둔다."""
+    return bool(FORM_RE.match(url) or SHORT_RE.match(url))
+
+
+NO_RESOLVE = ShortLinks(enabled=False)
 
 # ---------- 그누보드 글에서 신청기간·상태 추출 ----------
 PERIOD_LABEL_RE = re.compile(r"(?:모집|접수|신청|참여\s*신청)\s*(?:기간|일정|일시)?\s*[:：]?\s*")
@@ -103,9 +167,9 @@ def summarize(text, n=300):
 
 
 # ---------- 원본별 변환 ----------
-def from_orang(r):
-    urls = [u for u in (r.get("content_urls") or "").split() if u]
-    forms = [u for u in urls if FORM_RE.match(u)]
+def from_orang(r, links=NO_RESOLVE):
+    urls = list(dict.fromkeys(links.resolve(u) for u in (r.get("content_urls") or "").split() if u))
+    forms = [u for u in urls if is_form(u)]
     status = r["status"] or ("상시" if r["aply_text"] == "상시" else "")
     return {
         "program_id": f"orang:{r['sprtInfoId']}", "source": "seoul_orang", "kind": "program",
@@ -123,14 +187,14 @@ def from_orang(r):
     }
 
 
-def from_gnuboard(p):
+def from_gnuboard(p, links=NO_RESOLVE):
     base_year = (p["posted_at"] or p["first_seen"])[:4]
     blob = f"{p['list_text']} || {p['title']} || {p['content'][:2500]}"
     a0, a1, atext = extract_period(blob, base_year)
     p0, p1, ptext = extract_period(blob, base_year, PROG_LABEL_RE, allow_end_only=False)
     status = gnu_status(p["list_text"], p["title"])
-    urls = re.findall(r"https?://[^\s<>\"'()]+", p["content"])
-    forms = [u for u in urls if FORM_RE.match(u)]
+    urls = list(dict.fromkeys(links.resolve(u) for u in re.findall(r"https?://[^\s<>\"'()]+", p["content"])))
+    forms = [u for u in urls if is_form(u)]
     regions = p["region_cds"].split(";")
     return {
         "program_id": f"gnu:{p['site']}:{p['bo_table']}:{p['wr_id']}", "source": "gnuboard",
@@ -163,8 +227,10 @@ def dedupe_gnuboard(rows):
 
 
 def main():
-    orang = [from_orang(r) for r in read_csv(DATA / "seoul_orang" / "programs.csv")]
-    gnu_all = [from_gnuboard(p) for p in read_csv(DATA / "gnuboard" / "posts.csv")]
+    links = ShortLinks(paths.cache_file(SHORT_CACHE))
+    orang = [from_orang(r, links) for r in read_csv(DATA / "seoul_orang" / "programs.csv")]
+    gnu_all = [from_gnuboard(p, links) for p in read_csv(DATA / "gnuboard" / "posts.csv")]
+    links.save()
     gnu = dedupe_gnuboard(gnu_all)
     ts = now()
     rows = orang + gnu
@@ -182,6 +248,7 @@ def main():
     print(f"서울청년센터 {len(orang)}건 {stat(orang)}")
     print(f"그누보드     {len(gnu)}건 (중복 제거 {len(gnu_all) - len(gnu)}건) {stat(gnu)}, "
           f"신청기간 추출 {sum(1 for r in gnu if r['aply_end'])}건")
+    print(f"단축 링크   새로 풀림 {links.resolved}건, 못 풂 {links.failed}건 (캐시 {len(links.cache)}건)")
     print(f"→ {OUT}  전체 {len(rows)}건, 지금 신청 가능(is_active=Y) {sum(1 for r in rows if r['is_active'] == 'Y')}건")
 
 
