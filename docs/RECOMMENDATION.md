@@ -145,7 +145,7 @@ LLM 재분류는 적재와 별개로 앞 단계 캐시가 정한다(정책: `plc
 
 ## 5. 추천 알고리즘 (`app/recommend/rules.py`)
 
-0. **지역 코드 확인**: `sigungu_cd`가 원본(온통청년) 코드 목록에 없으면 422 `Unknown sigungu_cd`. 원본은 행정구역 개편 뒤 코드를 쓴다(광주·전남 통합 `12xxx`, 강원 `51xxx`, 전북 `52xxx`). 옛 코드(예: 곡성 `46720`, 지금은 `12720`)를 받으면 후보가 0건이 되므로 조용히 빈 결과를 주지 않는다. 목록은 serving JSON의 지역 코드 전체(`repository.known_sigungu_codes`).
+0. **지역 코드 확인**: `sigungu_cd`가 원본(온통청년) 코드 목록에 없으면 422 `Unknown sigungu_cd`. 원본은 행정구역 개편 뒤 코드를 쓴다(광주·전남 통합 `12xxx`, 강원 `51xxx`, 전북 `52xxx`). 옛 코드(예: 곡성 `46720`, 지금은 `12720`)를 받으면 후보가 0건이 되므로 조용히 빈 결과를 주지 않는다. 받는 코드는 거주지 목록 `app/catalog/regions.py`(256개, `GET /api/regions`, [REGIONS.md](REGIONS.md))와 같다. 원본 정책 일부는 개편 전 코드(화성시 `41590`, 천안시 `44130`, 인천 중·동·서구, 대전 전체 `30000`)로만 지역을 표시하므로, 매칭할 때 사용자 코드에 그 지역의 옛 코드를 더한다(`regions.match_codes`, DB는 배열 overlap). 서비스 데이터에 목록에 없는 새 코드가 생기면 `tests/test_regions.py`가 실패한다.
 1. **기본 필터** (SQL): status ok, 마감 안 지남, 나이 포함, 지역. 정책은 사용자 시군구 코드가 `region_cds`에 있어야 하고, 프로그램은 같은 시군구 또는 같은 시도 센터. 정책 마감일은 신청기간(`aplyYmd`) 끝, 신청기간이 비어 있으면 사업 종료일(`bizPrdEndYmd`).
 2. **자격 규칙**: 특정 대상 사업 제외(제목에 자살시도자·중독자·외국인근로자·전세사기/전세피해·다문화·북한이탈·제대군인·경계선지능 — 기본 정보로 확인할 수 없는 대상, `rules.SPECIAL_TARGET`), 직업(`jobCd`), 학력(`schoolCd`), 자격 상황(GATE: 모두 해당해야), 생애 단계 상황(STAGE: 하나만 해당해도).
 3. **점수**: 영역 수준 높음 30 / 보통 18 (주 영역 만점, 보조 영역 절반) · 관심 분야 +10 · 상황 일치 +10 · 지역(정책 시군구 +4, 광역 +2 / 프로그램 같은 구 +10) · 상시 프로그램 −4 · 대면 부담 높음 −8, 보통 −3 (모임·교류 영역이나 방문형) · 조회수로 동점 정리
@@ -157,6 +157,7 @@ LLM 재분류는 적재와 별개로 앞 단계 캐시가 정한다(정책: `plc
 
 | 메서드 | 경로 | 설명 |
 | --- | --- | --- |
+| GET | `/api/regions` | 거주지 시군구 목록 `{regions: [{code, sido, sigungu, label}]}`. FE는 `code`를 `profile.sigungu_cd`로 보낸다 |
 | GET | `/api/checkin/questions` | 문항 목록 |
 | POST | `/api/checkin/summary` | `{answers}` → 영역 수준 요약. 잘못된 답은 422 |
 | POST | `/api/recommendations` | `{profile, checkin}` → `summary`, `policies`, `programs`, `source` |

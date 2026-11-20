@@ -9,6 +9,8 @@ import json
 import re
 from datetime import date
 
+from app.catalog.regions import match_codes
+
 YMD = re.compile(r"(\d{8})")
 
 
@@ -105,7 +107,12 @@ def scope_of(row: dict, sigungu_cd: str) -> str:
     regions = row["region_cds"]
     if row["kind"] == "policy":
         return (row["payload"].get("region_scope") or ("전국" if len(regions) >= 240 else "광역"))
-    return "시군구" if sigungu_cd in regions else "광역"
+    return "시군구" if _in_region(row, sigungu_cd) else "광역"
+
+
+def _in_region(row: dict, sigungu_cd: str) -> bool:
+    """사용자 시군구(또는 그 지역의 옛 코드, regions.LEGACY)가 행의 거주지 코드에 있나."""
+    return any(code in row["region_cds"] for code in match_codes(sigungu_cd))
 
 
 def matches_basic(row: dict, sigungu_cd: str, age: int | None, today: date) -> bool:
@@ -115,5 +122,5 @@ def matches_basic(row: dict, sigungu_cd: str, age: int | None, today: date) -> b
     if age is not None and ((row["age_min"] and age < row["age_min"]) or (row["age_max"] and age > row["age_max"])):
         return False
     if row["kind"] == "policy":
-        return sigungu_cd in row["region_cds"]
-    return sigungu_cd in row["region_cds"] or sigungu_cd[:2] in row["sido_cds"]
+        return _in_region(row, sigungu_cd)
+    return _in_region(row, sigungu_cd) or sigungu_cd[:2] in row["sido_cds"]

@@ -29,13 +29,14 @@ FastAPI 실행 기반을 구현했습니다. GET /healthz, Swagger UI(/docs), �
 
 정책·센터 프로그램 추천을 구현했습니다(브랜치 `feat/recommendation-pipeline`, 리뷰 대기). 자세한 내용은 [추천 문서](docs/RECOMMENDATION.md)에 있습니다.
 
-- 구현 완료: 온통청년 정책 수집·청년센터 프로그램 크롤링·LLM 분류 파이프라인(`pipeline/`), `catalog_items` 테이블(migration 0002)과 적재, 변경 이력 `catalog_item_changes`(migration 0003, source_hash 비교로 created·updated·reopened·closed 기록), 상태 체크 문항·요약 API, 추천 API. DB가 없거나 비어 있으면 `data/seed/`의 serving JSON으로 같은 계산을 합니다.
+- 구현 완료: 온통청년 정책 수집·청년센터 프로그램 크롤링·LLM 분류 파이프라인(`pipeline/`), `catalog_items` 테이블(migration 0002)과 적재, 변경 이력 `catalog_item_changes`(migration 0003, source_hash 비교로 created·updated·reopened·closed 기록), 상태 체크 문항·요약 API, 추천 API, 거주지 목록 API(옛 행정코드로 표시된 정책도 새 구에 연결). DB가 없거나 비어 있으면 `data/seed/`의 serving JSON으로 같은 계산을 합니다.
 - 구현 완료(테이블만, 브랜치 `feat/user-schema`): 회원 테이블 `users`·`user_profiles`·`user_consents`·`checkin_responses`(migration 0004). 가입·로그인·프로필 저장 API와 인증은 아직 없습니다. 로그인 수단·세션 테이블은 로그인 방식이 정해지면 추가하며, 계획은 모델 파일 주석에 적어 두었습니다. 전체 테이블 설명은 [DB 테이블 안내](docs/DATABASE.md).
 - 계획: 매일 실행 스케줄러 연결, 운영 DB 적재, AI 비서 대화 연결, 로그인 방식 결정 후 인증·회원 API. 서비스 세션·사용자 저장은 아직 없습니다.
 - 배포: 하지 않았습니다.
 
 | 메서드 | 경로 | 설명 |
 | --- | --- | --- |
+| GET | /api/regions | 거주지 시군구 목록 `{code, sido, sigungu, label}` 256개 ([지역 코드](docs/REGIONS.md)) |
 | GET | /api/checkin/questions | 상태 체크 문항 |
 | POST | /api/checkin/summary | 답변 → 영역 수준 요약 (점수·위험 등급 없음) |
 | POST | /api/recommendations | 기본 정보 + 답변 → 정책 6 · 프로그램 4 |
