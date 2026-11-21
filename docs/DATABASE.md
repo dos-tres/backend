@@ -131,10 +131,12 @@ FE 마이페이지(내 정보, 대화 이력, 관심 목록, 참여 이력, 일�
 | 테이블 | 주요 컬럼 | 화면·용도 |
 | --- | --- | --- |
 | `saved_items` | `user_id`, `catalog_item_id`(FK), `created_at`. UNIQUE(user, item) | 관심 목록. `catalog_item_changes`와 이어 "마감일이 바뀌었어요" 알림 |
-| `activity_records` | `user_id`, `catalog_item_id`(null 가능), `title`, `status`(planned/applied/attended/cancelled), `planned_on`, `memo` | 참여 이력·섬 진행도. 계획과 실제 참여를 구분 |
+| `activity_records` | `user_id`, `catalog_item_id`(null 가능), `title`, `status`(planned/applied/attended/cancelled), `planned_on`, `memo`, `apply_channel`(form/guide/prepare/visit), `confirmed_by`(server/user), `submitted_at` | 참여 이력·섬 진행도. 계획과 실제 참여를 구분. 신청 완료를 조이가 확인했는지(제출 성공) 사용자가 알려 줬는지 구분 ([APPLY.md](APPLY.md) 1·10장) |
 | `schedule_events` | `user_id`, `title`, `date`, `catalog_item_id`(null 가능), `done` | 일정 |
 | `conversations` | `user_id`, `title`, `created_at`, `updated_at` | 대화 이력 (`chat_history` 동의) |
 | `conversation_messages` | `conversation_id`(FK CASCADE), `role`, `content`, `mode`, `created_at` | 대화 내용. 위기 대화 저장 여부·보관 기간은 정책 결정 필요 |
+
+동의 종류 추가 계획: `apply_submit` — 조이가 기관 신청서에 내 정보를 대신 제출하는 것에 대한 동의(실제 기관 폼 대리 제출을 할 때).
 
 전화 문의 대행 등 실행 업무(요구사항 6장의 실행 업무·문의 작업·실행 결과)는 그 기능을 만들 때 설계한다.
 

@@ -1,7 +1,7 @@
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from sqlalchemy.engine import make_url
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,6 +12,24 @@ class Settings(BaseSettings):
     app_env: Literal["local", "staging", "production"] = "local"
     database_url: SecretStr = SecretStr("")
     allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    # 대화용 LLM (OpenAI 호환). 파이프라인 분류와 같은 키 이름을 쓴다. 키가 없으면 /api/chat 은 503 (위기 안내는 키 없이도 동작)
+    llm_api_key: SecretStr = Field(SecretStr(""), validation_alias=AliasChoices("llm_api_key", "GMS_KEY", "OPENAI_API_KEY"))
+    llm_base_url: str = Field("https://gms.ssafy.io/gmsapi/api.openai.com/v1",
+                              validation_alias=AliasChoices("llm_base_url", "OPENAI_BASE_URL", "LLM_BASE_URL"))
+    llm_model: str = Field("gpt-4.1-mini", validation_alias=AliasChoices("llm_model", "LLM_MODEL"))
+    llm_timeout_seconds: float = Field(20.0, gt=0, le=60)
+
+    # 챗봇 신청: 대신 제출할 수 있는 항목 → 테스트 구글폼 주소 JSON (Git 제외 *.local.json, docs/APPLY.md 11장). 비우면 신청 가능한 항목 없음
+    apply_forms_path: str = Field("", validation_alias=AliasChoices("apply_forms_path", "APPLY_FORMS_PATH"))
+
+    @field_validator("llm_base_url", "llm_model", mode="before")
+    @classmethod
+    def empty_means_default(cls, value, info):
+        # .env.example 처럼 빈 값이면 기본값을 쓴다
+        if value in (None, ""):
+            return cls.model_fields[info.field_name].default
+        return value
 
     @field_validator("database_url")
     @classmethod

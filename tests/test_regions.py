@@ -4,7 +4,7 @@ from datetime import date
 
 from fastapi.testclient import TestClient
 
-from app.catalog.regions import LEGACY, REGION_CODES, REGIONS, match_codes
+from app.catalog.regions import CITY_DISTRICTS, LEGACY, REGION_CODES, REGIONS, match_codes, region_name
 from app.catalog.repository import data_region_codes, from_files
 from app.config import Settings
 from app.main import create_app
@@ -63,9 +63,28 @@ class RegionApiTests(unittest.TestCase):
         for region in self.client.get("/api/regions").json()["regions"]:
             body["profile"]["sigungu_cd"] = region["code"]
             self.assertEqual(self.client.post("/api/recommendations", json=body).status_code, 200, region)
-        for old in ("41590", "44130", "30000", "46720"):
+        for old in ("30000", "46720", "28110"):   # 옛 코드는 받지 않는다 (화성 41590·천안 44130은 이제 '시 전체'로 받음)
             body["profile"]["sigungu_cd"] = old
             self.assertEqual(self.client.post("/api/recommendations", json=body).status_code, 422, old)
+
+    def test_city_wide_codes_cover_their_districts(self):
+        # FE 공식 법정동 사전의 '시 전체' 13개 (2026-11-21: 422 → 그 시의 구를 모두 합쳐 찾음)
+        self.assertEqual(len(CITY_DISTRICTS), 13)
+        for city, districts in CITY_DISTRICTS.items():
+            self.assertGreaterEqual(len(districts), 2, city)
+            self.assertLessEqual(set(districts), REGION_CODES)
+            self.assertLessEqual(set(districts), set(match_codes(city)))
+        self.assertEqual(region_name("41110"), ("경기도", "수원시"))
+        body = {"profile": {"age": 25}, "checkin": {"economy": "high"}}
+        for city in CITY_DISTRICTS:
+            body["profile"]["sigungu_cd"] = city
+            self.assertEqual(self.client.post("/api/recommendations", json=body).status_code, 200, city)
+        # 시 전체 후보 = 그 시 구들의 후보를 합친 것 (화성시: 옛 코드 41590만 붙은 정책도 포함)
+        whole = {r["id"] for r in from_files("41590", 25, TODAY)}
+        parts = set()
+        for district in CITY_DISTRICTS["41590"]:
+            parts |= {r["id"] for r in from_files(district, 25, TODAY)}
+        self.assertEqual(whole, parts)
 
 
 if __name__ == "__main__":

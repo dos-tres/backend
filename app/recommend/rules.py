@@ -18,7 +18,7 @@ from app.catalog.rows import scope_of
 DOMAIN_REASON = {
     "E": {"high": "생활비·취업 준비 부담이 크다고 했어요", "mid": "생활비·취업 준비가 조금 부담된다고 했어요"},
     "P": {"high": "정기적으로 하는 활동이 없다고 했어요", "mid": "정기 활동이 가끔 있다고 했어요"},
-    "O": {"high": "밖에 거의 안 나간다고 했어요", "mid": "가끔 밖에 나간다고 했어요"},
+    "O": {"high": "밖에 잘 안 나간다고 했어요", "mid": "가끔 밖에 나간다고 했어요"},
     "C": {"high": "이야기 나눌 시간이 부족하다고 했어요", "mid": "이야기 나눌 시간이 보통이라고 했어요"},
     "U": {"high": "도움을 부탁할 사람이 없다고 했어요", "mid": "도움을 부탁할 사람이 있는지 잘 모르겠다고 했어요"},
 }
@@ -78,10 +78,13 @@ def my_situations(profile: dict) -> set[str]:
     return mine
 
 
-def eligible(row: dict, profile: dict) -> bool:
-    """나이·거주지·마감은 조회 단계(DB 또는 rows.matches_basic)에서 거른다. 여기서는 특정 대상·취업·학력·상황."""
+def eligible(row: dict, profile: dict, allow_special: bool = False) -> bool:
+    """나이·거주지·마감은 조회 단계(DB 또는 rows.matches_basic)에서 거른다. 여기서는 특정 대상·취업·학력·상황.
+
+    allow_special: 사용자가 직접 찾은 경우(대화 검색)에는 특정 대상 사업도 보여준다. 자동 추천에서는 False.
+    """
     payload = row["payload"]
-    if SPECIAL_TARGET.search(row["title"]):
+    if not allow_special and SPECIAL_TARGET.search(row["title"]):
         return False
     if row["kind"] == "policy":
         jobs = _names(payload.get("jobCd_nm"))
@@ -182,4 +185,40 @@ def rank(rows: list[dict], profile: dict, summary: dict, top: int) -> list[tuple
         out.append((round(points, 1), why, row))
         if len(out) >= top:
             break
+    return _keep_interests(out, scored, summary, seen)
+
+
+MAX_INTEREST_SLOTS = 2   # 관심 분야 자리 보장은 최대 2개 (나머지는 상태 체크 영역 점수 순서 그대로)
+
+
+def _keep_interests(out, scored, summary, seen):
+    """사용자가 고른 관심 분야마다 적어도 하나는 보이게 한다.
+
+    관심 분야 점수(+10)는 영역 점수(30/18)보다 약해서, 외출·대화 영역이 높은 사람이 '일자리·취업'을 골라도
+    일자리 정책이 하나도 안 나오는 경우가 있었다(2026-11-21 점검: 후보 24개 중 최고 13점 vs 6위 17.9점).
+    가중치는 그대로 두고, 빠진 관심 분야의 가장 높은 항목을 목록 맨 뒤 항목(관심 분야와 무관한 것)과 바꾼다.
+    """
+    interests = summary.get("interests") or []
+    if not out or not interests:
+        return out
+    swaps = 0
+    for key in interests:
+        if swaps >= MAX_INTEREST_SLOTS:
+            break
+        if any(interest_match(row, key) for _, _, row in out):
+            continue
+        pick = next(((p, w, r) for (p, w), r in scored
+                     if interest_match(r, key) and "".join(ch for ch in r["title"] if ch.isalnum())[:12] not in seen),
+                    None)
+        if pick is None:
+            continue
+        # 바꿀 자리: 뒤에서부터, 고른 관심 분야 어느 것과도 맞지 않는 항목
+        idx = next((i for i in range(len(out) - 1, -1, -1)
+                    if not any(interest_match(out[i][2], k) for k in interests)), None)
+        if idx is None:
+            break
+        points, why, row = pick
+        seen.add("".join(ch for ch in row["title"] if ch.isalnum())[:12])
+        out[idx] = (round(points, 1), why, row)
+        swaps += 1
     return out
