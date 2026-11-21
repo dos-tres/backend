@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -85,3 +85,40 @@ def recommendations(body: RecommendRequest, session: Session | None = Depends(op
     except UnknownRegion as exc:
         # 옛 행정코드(예: 광주·전남 통합 전 46xxx)를 쓰면 여기로 온다. 코드 목록은 원본(온통청년) 기준
         raise HTTPException(status_code=422, detail="Unknown sigungu_cd") from exc
+
+
+@router.get("/catalog/items")
+def catalog_items(q: str = Query('', max_length=200), kind: Literal['policy', 'program'] | None = None, category: str = Query('', max_length=80), sigungu_cd: str | None = Query(None, pattern=r'^\d{2}(?:\d{3})?$'), age: int | None = Query(None, ge=0, le=120), only_open: bool = True, sort: Literal['title', 'deadline'] = 'title', page: int = Query(1, ge=1), page_size: int = Query(12, ge=1, le=100), session: Session | None = Depends(optional_db)):
+    from app.catalog.browser import browse
+    return browse(session, q=q, kind=kind, category=category, sigungu_cd=sigungu_cd, age=age, only_open=only_open, page=page, page_size=page_size, sort=sort)
+
+
+@router.get("/catalog/items/{item_id}")
+def catalog_item(item_id: str, session: Session | None = Depends(optional_db)):
+    from app.catalog.browser import all_rows, full_item
+    rows, source = all_rows(session)
+    row = next((r for r in rows if r['id'] == item_id), None)
+    if row is None:
+        raise HTTPException(status_code=404, detail='Catalog item not found')
+    return {'item': full_item(row), 'source': source}
+
+
+@router.get('/centers')
+def centers(q: str = Query('', max_length=200), district: str = Query('', max_length=80), session: Session | None = Depends(optional_db)):
+    from app.catalog.centers import browse_centers
+    try:
+        return browse_centers(q, district, session)
+    except (OSError, ValueError, KeyError):
+        raise HTTPException(status_code=503, detail='Center data unavailable')
+
+
+@router.get('/centers/{center_id}')
+def center(center_id: str, session: Session | None = Depends(optional_db)):
+    from app.catalog.centers import center_detail
+    try:
+        result = center_detail(center_id, session)
+    except (OSError, ValueError, KeyError):
+        raise HTTPException(status_code=503, detail='Center data unavailable')
+    if result is None:
+        raise HTTPException(status_code=404, detail='Center not found')
+    return result
