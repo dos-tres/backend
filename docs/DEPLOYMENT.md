@@ -91,3 +91,67 @@ APP_ENV, ALLOWED_ORIGINS, DATABASE_URL은 현재 backend가 읽는다. 나머지
 공통 DB·API 구조 → 정책 수집 / 세션·설문 병렬 개발 → 추천·AI 대화 → 프론트 연결·배포 순서를 따른다.
 
 이번 DB 기반 PR 리뷰를 먼저 반영한다. 이후 기능별 API 계약을 합의하고 두 팀원이 정책 수집과 세션·설문을 병렬 개발한다. 기능별 모델과 Alembic revision을 함께 리뷰하며 복수 head가 생기면 통합 revision을 검토한다. 추천·AI 대화는 그 다음 단계이고, 프론트 연결과 실제 배포는 마지막 단계다. CLI는 구현·검증·PR까지 수행하고, PR 검토·병합·다음 작업 지정은 이 대화창에서 진행한다.
+
+## 9. 배포 방법 (AWS Lightsail 컨테이너, 2026-11-21)
+
+팀 결정(노션 「배포 및 운영 결정」): Lightsail 컨테이너 Micro(서울), Docker 이미지 1개(FE 화면 + API), 앱 안 스케줄러, 비밀값은 배포 환경변수로만.
+
+### 9-1. 이미지에 들어 있는 것
+
+| 구성 | 설명 |
+| --- | --- |
+| `Dockerfile` | 1단계 FE 빌드(`npm ci && npm run build`) → 2단계 Python 3.13 + 백엔드 + `web/`(FE dist). 일반 사용자(uid 10001)로 실행, 시간대 Asia/Seoul |
+| 화면 제공 (`app/web.py`) | `WEB_DIR=/app/web`. `/api/*`·`/healthz`가 먼저, 없는 `/api/*`는 JSON 404, 그 밖의 경로는 `index.html` (새로고침 OK) |
+| 스케줄러 (`app/scheduler.py`) | `SCHEDULER_ENABLED=true`면 시작 60초 뒤 1번 + 매일 `SCHEDULER_HOUR`(기본 4시) `pipeline.run_daily`. DB 주소가 없으면 `--no-load`, LLM 키가 없으면 `--no-llm`. 실패해도 서버는 마지막 정상 데이터로 동작 |
+| 기본 데이터 | `data/seed/serving` (정책 2,335 · 프로그램 137). 재시작하면 `data/runtime`은 비고 seed로 시작 → 스케줄러가 다시 채움 |
+| 사용량 제한 (`app/limits.py`) | LLM 요청(대화·초안): 접속자당 1분 10회·하루 100회, 서버 전체 하루 2,000회 → 429 `RATE_LIMITED`. 위기 안내는 제한 없음 |
+| 넣지 않는 것 (`Dockerfile.dockerignore`) | `.env`, `*.local.json`(테스트 폼 주소), `node_modules`, `.venv`, `data/runtime`, 테스트 |
+
+### 9-2. 로컬에서 이미지 만들고 확인
+
+frontend·backend를 같이 둔 작업 폴더(`dos-tres`)에서:
+
+```
+docker build -f backend/Dockerfile -t dostres:local .
+docker run --rm -p 127.0.0.1:8080:8000 dostres:local
+```
+
+`http://127.0.0.1:8080` 화면, `/healthz` 200, `/readyz`는 DB 없으면 503(정상). 2026-11-21 확인: 이미지 299MB, 화면·새로고침·API·추천(`source: file`)·위기 안내·429·`APPLY_FORMS_JSON`으로 신청 시작, 컨테이너 안 정책 파이프라인(`--no-load --no-llm`, 41초, 정책 2,314) 동작, 이미지 안 `.env`·`*.local.json` 없음.
+
+### 9-3. Lightsail 배포 (처음 한 번)
+
+준비: AWS CLI(`winget install --id Amazon.AWSCLI -e`), Lightsail 플러그인 `lightsailctl`(AWS 문서의 설치 안내), `aws configure`(본인 키, 리전 `ap-northeast-2`). **키를 레포·채팅에 쓰지 않는다.**
+
+```
+aws lightsail create-container-service --service-name dostres --power micro --scale 1 --region ap-northeast-2
+aws lightsail push-container-image --region ap-northeast-2 --service-name dostres --label app --image dostres:local
+```
+
+`push`가 알려 주는 이미지 이름(예: `:dostres.app.1`)을 `deploy/containers.json`에 넣는다. `deploy/containers.example.json`을 복사해 비밀값을 채운다(**`containers.json`은 Git 제외**). 콘솔의 배포 화면에서 환경변수를 직접 넣어도 된다.
+
+```
+aws lightsail create-container-service-deployment --region ap-northeast-2 --service-name dostres --containers file://deploy/containers.json --public-endpoint file://deploy/public-endpoint.json
+aws lightsail get-container-services --region ap-northeast-2 --service-name dostres
+```
+
+`state`가 `RUNNING`이 되면 `url`(https://…amazonlightsail.com)이 서비스 주소다.
+
+| 환경변수 | 값 | 비고 |
+| --- | --- | --- |
+| `APP_ENV` | `production` | 이미지 기본값 |
+| `SCHEDULER_ENABLED` | `true` | 매일 갱신 |
+| `YOUTH_POLICY_API_KEY`, `YOUTH_CENTER_API_KEY` | 온통청년 키 | 없으면 갱신만 실패, 서비스는 seed로 동작 |
+| `GMS_KEY`(또는 `OPENAI_API_KEY`), `OPENAI_BASE_URL`, `LLM_MODEL` | LLM | 없으면 대화·초안 503 |
+| `APPLY_FORMS_JSON` | 테스트 폼 목록 JSON | 없으면 신청은 `not_supported` |
+| `DATABASE_URL` | 운영 DB 주소 | **미정. 비우면 DB 없이 파일로 운영** (추천은 같은 계산) |
+| `ALLOWED_ORIGINS` | 비움 | 화면과 API가 같은 주소라 필요 없음 |
+
+### 9-4. 다시 배포 (코드 변경 후)
+
+`docker build …` → `push-container-image`(새 번호) → `containers.json`의 `image` 번호만 바꿔 `create-container-service-deployment`. 이전 배포는 콘솔에서 되돌릴 수 있다.
+
+### 9-5. 제출 후
+
+- 11/23 제출 버전을 git 태그로 고정하고 심사 기간(11/24~30)에는 기능 변경을 멈춘다.
+- UptimeRobot 등에 `https://…/healthz` 등록(다운 알림).
+- **심사가 끝나면 컨테이너 서비스를 삭제**한다(`aws lightsail delete-container-service --service-name dostres --region ap-northeast-2`). 비활성화는 요금이 계속 나간다.

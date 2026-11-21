@@ -1,0 +1,12 @@
+{
+  "containerName": "app",
+  "containerPort": 8000,
+  "healthCheck": {
+    "path": "/healthz",
+    "intervalSeconds": 30,
+    "timeoutSeconds": 5,
+    "healthyThreshold": 2,
+    "unhealthyThreshold": 3,
+    "successCodes": "200"
+  }
+}

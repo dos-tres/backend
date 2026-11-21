@@ -1,0 +1,14 @@
+{
+  "app": {
+    "image": ":dostres.app.1",
+    "ports": {"8000": "HTTP"},
+    "environment": {
+      "APP_ENV": "production",
+      "SCHEDULER_ENABLED": "true",
+      "YOUTH_POLICY_API_KEY": "<여기에 직접 — Git에 올리지 않음>",
+      "YOUTH_CENTER_API_KEY": "<여기에 직접>",
+      "GMS_KEY": "<LLM 키, 없으면 이 줄 삭제 → 대화 503>",
+      "APPLY_FORMS_JSON": "{\"demo:open\":{\"form_url\":\"<테스트 폼 응답용 주소>\"},\"demo:closed\":{\"form_url\":\"<마감 폼 주소>\"}}"
+    }
+  }
+}

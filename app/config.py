@@ -22,6 +22,20 @@ class Settings(BaseSettings):
 
     # 챗봇 신청: 대신 제출할 수 있는 항목 → 테스트 구글폼 주소 JSON (Git 제외 *.local.json, docs/APPLY.md 11장). 비우면 신청 가능한 항목 없음
     apply_forms_path: str = Field("", validation_alias=AliasChoices("apply_forms_path", "APPLY_FORMS_PATH"))
+    # 배포용: 같은 내용을 JSON 문자열로 (서버에는 파일을 올리지 않는다). 둘 다 있으면 합친다
+    apply_forms_json: SecretStr = Field(SecretStr(""), validation_alias=AliasChoices("apply_forms_json", "APPLY_FORMS_JSON"))
+
+    # 배포: FE 빌드(dist) 폴더. index.html 이 있으면 API 와 같은 주소에서 화면을 제공한다 (app/web.py). 로컬 개발은 비움
+    web_dir: str = Field("", validation_alias=AliasChoices("web_dir", "WEB_DIR"))
+
+    # 배포: 앱 안 스케줄러 (시작 후 1번 + 매일 scheduler_hour 시, 서버 시간대 기준). 로컬·테스트는 끔 (app/scheduler.py)
+    scheduler_enabled: bool = Field(False, validation_alias=AliasChoices("scheduler_enabled", "SCHEDULER_ENABLED"))
+    scheduler_hour: int = Field(4, ge=0, le=23, validation_alias=AliasChoices("scheduler_hour", "SCHEDULER_HOUR"))
+
+    # LLM 을 부르는 요청(대화·초안) 사용량 제한 (app/limits.py). 0이면 그 제한을 끈다. 위기 안내는 제한하지 않는다
+    llm_limit_per_minute: int = Field(10, ge=0, validation_alias=AliasChoices("llm_limit_per_minute", "LLM_LIMIT_PER_MINUTE"))
+    llm_limit_per_day: int = Field(100, ge=0, validation_alias=AliasChoices("llm_limit_per_day", "LLM_LIMIT_PER_DAY"))
+    llm_limit_total_per_day: int = Field(2000, ge=0, validation_alias=AliasChoices("llm_limit_total_per_day", "LLM_LIMIT_TOTAL_PER_DAY"))
 
     @field_validator("llm_base_url", "llm_model", mode="before")
     @classmethod

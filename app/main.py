@@ -18,6 +18,9 @@ from app.chat.llm import LLMUnavailable, OpenAICompatible
 from app.apply.router import router as apply_router
 from app.chat.router import router as chat_router
 from app.recommend.router import router as recommend_router
+from app.limits import RateLimited, UsageLimiter
+from app.scheduler import DailyPipeline, pipeline_args
+from app.web import web_files
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +45,17 @@ def create_app(settings: Settings | None = None) -> CORSMiddleware:
         url = settings.database_url.get_secret_value()
         database = Database(url) if url else None
         api.state.database = database
+        daily = None
+        if settings.scheduler_enabled:
+            daily = DailyPipeline(pipeline_args(bool(url), bool(settings.llm_api_key.get_secret_value())),
+                                  settings.scheduler_hour)
+            daily.start()
+        api.state.daily_pipeline = daily
         try:
             yield
         finally:
+            if daily is not None:
+                daily.shutdown()
             if database is not None:
                 database.dispose()
             api.state.database = None
@@ -53,6 +64,8 @@ def create_app(settings: Settings | None = None) -> CORSMiddleware:
     api.state.settings = settings
     api.state.database = None
     llm_key = settings.llm_api_key.get_secret_value()
+    api.state.limiter = UsageLimiter(settings.llm_limit_per_minute, settings.llm_limit_per_day,
+                                     settings.llm_limit_total_per_day)
     api.state.chat_model = (OpenAICompatible(llm_key, settings.llm_base_url, settings.llm_model,
                                              settings.llm_timeout_seconds) if llm_key else None)
 
@@ -75,6 +88,15 @@ def create_app(settings: Settings | None = None) -> CORSMiddleware:
     api.include_router(recommend_router)
     api.include_router(chat_router)
     api.include_router(apply_router)
+
+    web = web_files(settings.web_dir)
+    if web is not None:
+        api.mount("/", web, name="web")   # 라우터 뒤에 둬서 /api·/healthz 가 먼저 받는다
+
+    @api.exception_handler(RateLimited)
+    async def rate_limited(request: Request, exc: RateLimited) -> JSONResponse:
+        message = ("Too many requests today" if exc.scope in ("day", "total") else "Too many requests, try again shortly")
+        return error_response(429, "RATE_LIMITED", message, {"Retry-After": str(exc.retry_after)})
 
     @api.exception_handler(LLMUnavailable)
     async def llm_unavailable(request: Request, exc: LLMUnavailable) -> JSONResponse:

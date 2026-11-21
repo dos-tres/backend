@@ -12,7 +12,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.apply import registry as apply_registry
+from app.chat import safety
 from app.chat.service import respond
+from app.limits import client_key
 from app.checkin.summary import CheckinError
 from app.recommend.router import Profile, optional_db
 from app.recommend.service import UnknownRegion
@@ -35,10 +37,12 @@ class ChatRequest(BaseModel):
 def chat(body: ChatRequest, request: Request, session: Session | None = Depends(optional_db)) -> dict:
     if body.messages[-1].role != "user":
         raise HTTPException(status_code=422, detail="Last message must be from user")
+    if not safety.is_crisis(body.messages[-1].content):   # 위기 안내는 LLM 을 안 쓰므로 제한하지 않는다
+        request.app.state.limiter.hit(client_key(request))
     try:
         data = respond(session, request.app.state.chat_model, [m.model_dump() for m in body.messages],
                        body.profile.model_dump() if body.profile else None, body.checkin)
-        apply_registry.mark(data.get("results"), apply_registry.load(request.app.state.settings.apply_forms_path))
+        apply_registry.mark(data.get("results"), apply_registry.from_settings(request.app.state.settings))
         return data
     except CheckinError as exc:
         raise HTTPException(status_code=422, detail="Invalid check-in answers") from exc
