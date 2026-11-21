@@ -42,3 +42,13 @@ class OfficialCenterTest(unittest.TestCase):
             with patch('app.catalog.centers.paths.PROGRAM_DIR', Path(folder)):
                 self.assertEqual(official_content('서울청년센터 중구')['center_id'], 'CT00162')
                 self.assertIsNone(official_content('서울청년센터 관악'))
+
+    def test_independent_guides_use_confirmed_hours_without_guessing(self):
+        from app.catalog.centers import center_detail
+        self.assertIn('09:00~18:00', center_detail('10280', None)['item']['guide']['hours'])
+        self.assertIn('평일 09:00~18:00', center_detail('10041', None)['item']['guide']['hours'])
+        self.assertNotIn('hours', center_detail('10281', None)['item']['guide'])
+        for id in ['10282', '10038', '10034', '10278', '10042', '10277', '10047']:
+            link = center_detail(id, None)['item']['guide']['notice_url']
+            self.assertTrue(link.startswith('https://'))
+            self.assertNotIn('PHPSESSID', link)

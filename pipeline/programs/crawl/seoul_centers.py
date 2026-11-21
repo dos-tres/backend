@@ -24,6 +24,7 @@ def clean(text):
     text = re.sub(r'\b01[016789][-\s]?\d{3,4}[-\s]?\d{4}\b', '', text or '')
     text = re.sub(r'\b0\d{1,2}[-\s]\d{3,4}[-\s]\d{4}\b', '', text)
     text = re.sub(r'https?://\S+|[\w.+-]+@[\w.-]+', '', text)
+    text = re.sub(r'(?:예약|신청)\s*링크\s*[:：]?\s*$', '', text)
     return re.sub(r'\s+', ' ', text).strip()
 
 

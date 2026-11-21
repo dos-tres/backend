@@ -25,8 +25,8 @@
     ],
     "usage_note": "청년카페·작업실은 상시 개방 공간이며, 대관 공간은 홈페이지에서 예약해요. 공간에 따라 이용료가 달라요.",
     "source": {
-      "name": "관악문화재단 관악청년청 안내",
-      "url": "https://gfac.or.kr/site/main/content/youthoffice",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://www.checkin-gwanak.or.kr/main/",
       "checked_at": "2026-11-21"
     },
     "hours": "화~토 10:00~21:00, 일 10:00~18:00 / 월요일·법정공휴일 등 휴관"
@@ -35,17 +35,22 @@
     "kind": "문화·창작·휴식",
     "summary": "음악 작업과 창작, 휴식, 공부와 모임을 위한 공간을 갖춘 청년 복합문화공간이에요.",
     "facilities": [
-      "음악실·스튜디오",
+      "음악실",
+      "다목적스튜디오",
       "휴게라운지",
       "공유주방",
-      "스터디라운지·회의실"
+      "스터디라운지",
+      "회의실"
     ],
     "usage_note": "공간별 대관·예약 가능 여부와 운영 공지는 공식 공간 안내에서 확인해 주세요.",
     "source": {
-      "name": "광진 청년아지트 공식 공간 안내",
-      "url": "https://gwangzit.org/page/?M2_IDX=39692",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://mediahub.seoul.go.kr/archives/2018532",
       "checked_at": "2026-11-21"
-    }
+    },
+    "hours": "월~금 10:00~19:00, 토 10:00~14:00 / 일요일·공휴일 휴관",
+    "notice_url": "https://www.gwangzit.org/board/list.php?M2_IDX=39706",
+    "homepage": "https://www.gwangzit.org/"
   },
   "10032": {
     "kind": "취업지원·스터디",
@@ -55,13 +60,14 @@
       "스터디·커뮤니티",
       "상담·활동 공간"
     ],
-    "usage_note": "이용 가능한 공간과 교육·상담 신청은 센터 공식 홈페이지에서 확인해 주세요.",
+    "usage_note": "공간 대관과 취업·진로 프로그램을 운영해요. 이용과 대관은 센터 홈페이지의 공간 안내 및 예약 조건을 확인해 주세요.",
     "source": {
-      "name": "구로구 공식 청년이룸 운영계획",
+      "name": "공식 운영기관·지자체 안내",
       "url": "https://www.guro.go.kr/raonkeditordata/2025/03/20250304_160235540_46500.pdf",
       "checked_at": "2026-11-21"
     },
-    "homepage": "https://www.youtheroom.kr/"
+    "homepage": "https://www.youtheroom.kr/",
+    "notice_url": "http://www.youtheroom.kr/bbs/board.php?tbl=bbs41"
   },
   "10041": {
     "kind": "취업지원·면접준비",
@@ -72,12 +78,14 @@
       "이력서 사진 촬영",
       "면접실·교육실"
     ],
-    "usage_note": "서비스마다 대상과 예약 절차가 달라요. 이용 전 공식 안내를 확인해 주세요.",
+    "usage_note": "센터 운영시간과 개별 서비스 이용시간은 달라요. 정장·사진 촬영·화상면접·공간대관은 서비스별 예약 조건을 확인해 주세요.",
     "source": {
-      "name": "노량진 청년일자리센터 공식 공간 안내",
+      "name": "공식 운영기관·지자체 안내",
       "url": "https://youthjob.dongjak.go.kr/noryangjin/contents.do?mId=1501",
       "checked_at": "2026-11-21"
-    }
+    },
+    "hours": "평일 09:00~18:00 / 토·일요일·법정공휴일 휴관",
+    "address": "서울특별시 동작구 노량진로 140, 메가스터디타워 2층"
   },
   "10038": {
     "kind": "물품공유·휴식·모임",
@@ -88,27 +96,31 @@
       "물품 대여",
       "재능공유"
     ],
-    "usage_note": "물품 대여와 공간 대관은 이용 대상·증빙·예약 조건을 공식 안내에서 확인해 주세요.",
+    "usage_note": "물품 대여·공유주방·강의실은 홈페이지 가입 후 노원구 거주·생활권 확인과 관리자 승인이 필요해요. 대여·반납 시간은 별도로 확인해 주세요.",
     "source": {
-      "name": "청년몽땅정보통 청년공감 공간 이용 안내",
+      "name": "공식 운영기관·지자체 안내",
       "url": "https://youth.seoul.go.kr/infoData/sprtInfo/view.do?key=2309130006&sprtInfoId=67157",
       "checked_at": "2026-11-21"
-    }
+    },
+    "hours": "화~토 10:00~19:00 / 12:00~13:00 미운영",
+    "notice_url": "https://www.nowonshare.kr/main/main.php?categoryid=06&menuid=01&groupid=00"
   },
   "10034": {
     "kind": "일경험·생활·관계망",
     "summary": "청년의 일과 삶을 함께 지원하며, 일경험·취업역량 강화와 청년 1인가구의 생활·관계망 활동을 운영하는 곳이에요.",
     "facilities": [
-      "일경험·진로 탐색",
-      "취업역량 강화",
-      "1인가구·커뮤니티"
+      "일경험 프로그램",
+      "취업역량 교육",
+      "1인가구 커뮤니티",
+      "고립·은둔 청년 지원"
     ],
     "usage_note": "사업별 참여 대상과 일정이 달라요. 공식 홈페이지의 프로그램과 운영 공지를 확인해 주세요.",
     "source": {
-      "name": "노원청년 일삶센터 공식 소개",
-      "url": "https://13center.kr/gwbbs/gw_page1.php?me_co=10&ti=cate1",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://13center.kr/gwbbs/gw_page1.php?ti=cate1&me_co=1010",
       "checked_at": "2026-11-21"
-    }
+    },
+    "notice_url": "https://13center.kr/gwbbs/board.php?bo_table=news&me_co=4010"
   },
   "10035": {
     "kind": "취업상담·취업준비",
@@ -119,12 +131,13 @@
       "취업사진 촬영",
       "스터디 공간"
     ],
-    "usage_note": "상담·촬영·대여는 예약과 이용 조건을 먼저 확인해 주세요.",
+    "usage_note": "취업상담과 커리어 프로그램, 취업 사진 촬영 등을 운영해요. 프로그램별 모집과 서비스 이용 조건은 공식 홈페이지에서 확인해 주세요.",
     "source": {
-      "name": "서울시 공식 매체 청년내일 공간 소개",
-      "url": "https://mediahub.seoul.go.kr/archives/2006266",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://nwjob.kr/about",
       "checked_at": "2026-11-21"
-    }
+    },
+    "homepage": "https://nwjob.kr/about"
   },
   "10037": {
     "kind": "청년참여·정책제안",
@@ -134,10 +147,10 @@
       "정책 발굴",
       "청년 네트워크"
     ],
-    "usage_note": "청년정책 참여와 센터 이용 안내는 노원구 청년포털에서 확인해 주세요.",
+    "usage_note": "청년정책 참여·거버넌스와 진로·취업 지원 프로그램의 거점이에요. 상시 자유 이용 공간으로 단정하지 않고, 방문·참여 조건은 공식 안내에서 확인해 주세요.",
     "source": {
-      "name": "노원구의회 공식 청년정책 업무보고",
-      "url": "https://council.nowon.kr/record/recordView.do?key=52968e4e679c7f433382b4d3efac957c283567be6d3091b822e906e31988fd7dd426770728dc0ded",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://www.nowon.kr/www/user/bbs/BD_selectBbs.do?q_bbsCode=1001&q_bbscttSn=20261007134349700",
       "checked_at": "2026-11-21"
     },
     "homepage": "https://nowon.kr/youth/user/main.do"
@@ -146,17 +159,19 @@
     "kind": "취업지원·면접준비",
     "summary": "취업을 준비하는 청년을 위해 스터디 공간, 면접사진 촬영·정장 대여와 취업지원 교육을 제공하는 곳이에요.",
     "facilities": [
-      "스터디 공간",
-      "면접사진·정장 대여",
-      "화상면접실",
-      "취업지원 교육"
+      "스터디공간",
+      "면접사진 촬영",
+      "정장대여",
+      "화상면접실"
     ],
-    "usage_note": "시설과 서비스는 센터 공식 예약 안내를 확인한 뒤 이용해 주세요.",
+    "usage_note": "서울시 청년 대상 취업 준비 공간과 서비스를 제공해요. 시설 이용은 공식 블로그 또는 네이버 예약 안내를 확인해 주세요.",
     "source": {
-      "name": "도봉구 공식 일자리 안내",
+      "name": "공식 운영기관·지자체 안내",
       "url": "https://www.dobong.go.kr/Contents.asp?code=10010267",
       "checked_at": "2026-11-21"
-    }
+    },
+    "hours": "평일 09:00~18:00, 토 10:00~17:00",
+    "address": "서울특별시 도봉구 마들로 656, 도봉구청 1층"
   },
   "10278": {
     "kind": "창업보육·업무공간",
@@ -167,12 +182,15 @@
       "스마트스튜디오",
       "창업 멘토링"
     ],
-    "usage_note": "사무공간은 입주 대상·선발 조건이 있어요. 입주·시설 이용 절차를 먼저 확인해 주세요.",
+    "usage_note": "창업기업 보육실·공유사무실과 창업 프로그램을 운영해요. 입주와 대관은 각각의 모집·예약 조건을 확인해 주세요.",
     "source": {
-      "name": "도봉구청년창업센터 공식 입주 안내",
-      "url": "https://dobongstartup.com/bbs/content.php?co_id=startup",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://dobongstartup.com/",
       "checked_at": "2026-11-21"
-    }
+    },
+    "hours": "평일 09:00~18:00",
+    "address": "서울특별시 도봉구 마들로13길 61, 씨드큐브 창동 오피스 C동 4층",
+    "notice_url": "https://dobongstartup.com/bbs/board.php?bo_table=donotic"
   },
   "10042": {
     "kind": "취업·창업·스터디",
@@ -184,43 +202,52 @@
     ],
     "usage_note": "활동 목적에 맞는 공간과 예약·이용 조건은 공식 홈페이지에서 확인해 주세요.",
     "source": {
-      "name": "서울시 일자리포털 마포청년나루 안내",
-      "url": "https://job.seoul.go.kr/hmpg/spct/jbcf/jbcfDetail.do?recmnt_cafe_no=41186D9CB2A9040CE063C0A8A02876A1",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://www.naroo.or.kr/",
       "checked_at": "2026-11-21"
     },
-    "homepage": "https://www.naroo.or.kr/"
+    "homepage": "https://www.naroo.or.kr/",
+    "hours": "월~금 10:00~21:00, 토 10:00~18:00 / 일요일·공휴일 휴관",
+    "notice_url": "https://www.naroo.or.kr/bbs/board.php?bo_table=notice_01"
   },
   "10277": {
     "kind": "문화예술·전시",
     "summary": "청년 문화예술 활동을 위한 공간으로 미디어아트실·갤러리·회의실 등을 갖추고 있어요. 전시와 문화예술 활동을 공식 채널에서 확인할 수 있어요.",
     "facilities": [
-      "미디어아트",
-      "갤러리·전시",
-      "회의 공간"
+      "전시 공간",
+      "청년 예술가 지원",
+      "문화예술 프로그램"
     ],
-    "usage_note": "전시·행사와 공간 이용 일정은 공식 홈페이지에서 확인해 주세요.",
+    "usage_note": "전시 관람·예술 프로그램 공간이에요. 전시 기간과 프로그램 참여 조건을 공식 홈페이지에서 확인해 주세요.",
     "source": {
-      "name": "노원구 공식 2026 구정기본현황",
-      "url": "https://ebook.nowon.kr/src/viewer/download.php?host=main&no=1&site=20260421_132545",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://salon5120.com/about/",
       "checked_at": "2026-11-21"
     },
-    "homepage": "https://salon5120.com/"
+    "homepage": "https://salon5120.com/",
+    "hours": "화~토 10:00~19:00 / 12:00~13:00 점심시간, 일·월요일·공휴일 휴관",
+    "notice_url": "https://salon5120.com/notice/"
   },
   "10050": {
     "kind": "청년정책·지원연계",
     "summary": "서울 청년정책의 전달·연계와 지역 서울청년센터 운영을 지원하는 광역 거점이에요. 청년수당·마음건강 등 서울시 청년 지원사업을 안내해요.",
     "facilities": [
-      "청년정책 안내",
-      "지원사업 연계",
-      "지역센터 지원"
+      "대·소회의실",
+      "다목적실",
+      "종합상담실",
+      "화상면접실",
+      "스튜디오",
+      "청년미니쿡"
     ],
     "usage_note": "지역 센터의 공간 이용과는 성격이 달라요. 원하는 지원사업의 신청·상담 안내를 확인해 주세요.",
     "source": {
-      "name": "청년몽땅정보통 서울광역청년센터 운영 안내",
-      "url": "https://youth.seoul.go.kr/infoData/plcyInfo/view.do?key=2309150002&plcyBizId=20250522005400210872",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://www.smyc.kr/DIRECTION",
       "checked_at": "2026-11-21"
     },
-    "homepage": "https://www.smyc.kr/"
+    "homepage": "https://www.smyc.kr/main",
+    "hours": "청년공간 평일 10:00~22:00, 토 10:00~17:00 / 일요일·공휴일 휴무",
+    "notice_url": "https://www.smyc.kr/NOTICE"
   },
   "10047": {
     "kind": "공유공간·생활지원",
@@ -229,12 +256,14 @@
       "공유공간",
       "생활·커뮤니티 지원"
     ],
-    "usage_note": "이용 가능한 공간과 생활지원 일정은 성동구 공식 안내를 확인해 주세요.",
+    "usage_note": "청년 활동 공간과 지원 프로그램을 운영해요. 시설 정비 등 추가 휴관과 공간 이용 조건은 공식 공지를 확인해 주세요.",
     "source": {
-      "name": "서울시 공식 매체 성동구 청년지원센터 소개",
-      "url": "https://mediahub.seoul.go.kr/archives/2017911",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://www.sdyv.org/",
       "checked_at": "2026-11-21"
-    }
+    },
+    "hours": "월~토 09:00~18:00 / 공휴일·매월 넷째 주 토요일 등 휴관",
+    "notice_url": "https://www.sdyv.org/notice/list/"
   },
   "10051": {
     "kind": "휴식·모임·취업지원",
@@ -246,10 +275,11 @@
     ],
     "usage_note": "공간 대관과 취업지원 서비스별 예약·대상 조건을 확인해 주세요.",
     "source": {
-      "name": "서울시 일자리포털 용산 청년지음 안내",
-      "url": "https://job.seoul.go.kr/hmpg/spct/jbcf/jbcfDetail.do?recmnt_cafe_no=4118EA5906AD01A0E063C0A8A028BBC8",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://mediahub.seoul.go.kr/archives/2018986",
       "checked_at": "2026-11-21"
-    }
+    },
+    "hours": "평일 10:00~22:00, 토 10:00~17:00 / 매주 일요일 휴무"
   },
   "10281": {
     "kind": "창업보육·사무공간",
@@ -259,9 +289,9 @@
       "창업교육",
       "컨설팅"
     ],
-    "usage_note": "사무공간은 입주 모집·선발 조건을 확인해 주세요. 방문 전 공식 운영 안내를 확인해 주세요.",
+    "usage_note": "청년 창업기업을 선발해 입주 사무공간·교육·컨설팅을 지원하는 시설이에요. 일반 방문 공간과 구분해 입주·상담 조건을 공식 안내에서 확인해 주세요.",
     "source": {
-      "name": "종로구 공식 평생교육기관 안내",
+      "name": "공식 운영기관·지자체 안내",
       "url": "https://lle.jongno.go.kr/site/main/map/lle/234",
       "checked_at": "2026-11-21"
     }
@@ -274,12 +304,14 @@
       "문화·커뮤니티",
       "공간 대관"
     ],
-    "usage_note": "공유공간 이용 가능 시간과 예약 조건은 공식 안내에서 확인해 주세요.",
+    "usage_note": "성북청년 스마트창업센터 내 청년 창업자·크리에이터·주민을 위한 공간이에요. 창업교육·지역문화예술 프로그램과 공간 이용 조건은 성북구 공식 안내에서 확인해 주세요.",
     "source": {
-      "name": "성북구 공식 청년공간 길이음 안내",
-      "url": "https://sb.go.kr/www/contents.do?key=7349",
+      "name": "공식 운영기관·지자체 안내",
+      "url": "https://www.sb.go.kr/www/contents.do?key=7349",
       "checked_at": "2026-11-21"
     },
-    "address": "서울특별시 성북구 삼양로 29 성북 청년 스마트창업센터 1층"
+    "address": "서울특별시 성북구 삼양로 29 성북 청년 스마트창업센터 1층",
+    "hours": "월~금 09:00~18:00 / 12:00~13:00 휴게시간, 주말·공휴일 휴무",
+    "homepage": "https://www.sb.go.kr/www/contents.do?key=7349"
   }
 }
