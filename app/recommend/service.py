@@ -10,6 +10,8 @@ from app.catalog.rows import scope_of
 from app.checkin.summary import summarize
 from app.recommend.rules import rank
 
+from app.catalog.presentation import presentation_fields, catalog_today
+
 TOP_POLICIES = 6
 TOP_PROGRAMS = 4
 
@@ -46,7 +48,7 @@ NO_PROGRAM_MATCH = {
 }
 
 
-def to_item(points: float, why: list[str], row: dict, sigungu_cd: str) -> dict:
+def to_item(points: float, why: list[str], row: dict, sigungu_cd: str, today: date | None = None) -> dict:
     p = row["payload"]
     item = {
         "id": row["id"],
@@ -80,6 +82,8 @@ def to_item(points: float, why: list[str], row: dict, sigungu_cd: str) -> dict:
             "apply_urls": p.get("apply_urls") or "",
             "evergreen": bool(p.get("evergreen")),   # 오래된 상시 글: '이용 전 센터에 확인' 표시
         })
+    item.update(presentation_fields(row, today))
+    item['apply_period'] = item['application_period']
     return item
 
 
@@ -88,7 +92,7 @@ class UnknownRegion(ValueError):
 
 
 def recommend(session: Session | None, profile: dict, answers: dict, today: date | None = None) -> dict:
-    today = today or date.today()
+    today = today or catalog_today()
     summary = summarize(answers)
     if profile["sigungu_cd"] not in known_sigungu_codes():
         raise UnknownRegion(profile["sigungu_cd"])
@@ -102,8 +106,8 @@ def recommend(session: Session | None, profile: dict, answers: dict, today: date
         programs_notice = NO_PROGRAM_MATCH if program_rows else NO_PROGRAM_DATA
     return {
         "summary": summary,
-        "policies": [to_item(s, w, r, profile["sigungu_cd"]) for s, w, r in policies],
-        "programs": [to_item(s, w, r, profile["sigungu_cd"]) for s, w, r in programs],
+        "policies": [to_item(s, w, r, profile["sigungu_cd"], today) for s, w, r in policies],
+        "programs": [to_item(s, w, r, profile["sigungu_cd"], today) for s, w, r in programs],
         "programs_notice": programs_notice,
         "candidates": {"policy": sum(r["kind"] == "policy" for r in rows),
                        "program": len(program_rows)},
