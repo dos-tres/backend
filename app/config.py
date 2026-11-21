@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # 배포: 앱 안 스케줄러 (시작 후 1번 + 매일 scheduler_hour 시, 서버 시간대 기준). 로컬·테스트는 끔 (app/scheduler.py)
     scheduler_enabled: bool = Field(False, validation_alias=AliasChoices("scheduler_enabled", "SCHEDULER_ENABLED"))
     scheduler_hour: int = Field(4, ge=0, le=23, validation_alias=AliasChoices("scheduler_hour", "SCHEDULER_HOUR"))
+    # 배포: 시작할 때 운영 DB 테이블 만들기(alembic upgrade head) + 비어 있으면 기본 데이터 적재. DATABASE_URL 이 있을 때만
+    db_auto_migrate: bool = Field(False, validation_alias=AliasChoices("db_auto_migrate", "DB_AUTO_MIGRATE"))
 
     # LLM 을 부르는 요청(대화·초안) 사용량 제한 (app/limits.py). 0이면 그 제한을 끈다. 위기 안내는 제한하지 않는다
     llm_limit_per_minute: int = Field(10, ge=0, validation_alias=AliasChoices("llm_limit_per_minute", "LLM_LIMIT_PER_MINUTE"))

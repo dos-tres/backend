@@ -5,6 +5,8 @@
     "environment": {
       "APP_ENV": "production",
       "SCHEDULER_ENABLED": "true",
+      "DB_AUTO_MIGRATE": "true",
+      "DATABASE_URL": "postgresql+psycopg://<사용자>:<URL 인코딩한 비밀번호>@<Lightsail DB 엔드포인트>:5432/<DB 이름>",
       "YOUTH_POLICY_API_KEY": "<여기에 직접 — Git에 올리지 않음>",
       "YOUTH_CENTER_API_KEY": "<여기에 직접>",
       "GMS_KEY": "<LLM 키, 없으면 이 줄 삭제 → 대화 503>",

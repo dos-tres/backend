@@ -104,6 +104,7 @@ APP_ENV, ALLOWED_ORIGINS, DATABASE_URL은 현재 backend가 읽는다. 나머지
 | 화면 제공 (`app/web.py`) | `WEB_DIR=/app/web`. `/api/*`·`/healthz`가 먼저, 없는 `/api/*`는 JSON 404, 그 밖의 경로는 `index.html` (새로고침 OK) |
 | 스케줄러 (`app/scheduler.py`) | `SCHEDULER_ENABLED=true`면 시작 60초 뒤 1번 + 매일 `SCHEDULER_HOUR`(기본 4시) `pipeline.run_daily`. DB 주소가 없으면 `--no-load`, LLM 키가 없으면 `--no-llm`. 실패해도 서버는 마지막 정상 데이터로 동작 |
 | 기본 데이터 | `data/seed/serving` (정책 2,335 · 프로그램 137). 재시작하면 `data/runtime`은 비고 seed로 시작 → 스케줄러가 다시 채움 |
+| 운영 DB 준비 (`DB_AUTO_MIGRATE`) | `DATABASE_URL`이 있고 `DB_AUTO_MIGRATE=true`면 시작할 때 `alembic upgrade head` + 비어 있을 때만 기본 데이터 적재(`load_catalog --seed --if-empty`). 스케줄러 첫 실행 전에 같은 스레드에서 해서 겹치지 않음. 실패하면 서비스는 파일로 계속 |
 | 사용량 제한 (`app/limits.py`) | LLM 요청(대화·초안): 접속자당 1분 10회·하루 100회, 서버 전체 하루 2,000회 → 429 `RATE_LIMITED`. 위기 안내는 제한 없음 |
 | 넣지 않는 것 (`Dockerfile.dockerignore`) | `.env`, `*.local.json`(테스트 폼 주소), `node_modules`, `.venv`, `data/runtime`, 테스트 |
 
@@ -118,7 +119,19 @@ docker run --rm -p 127.0.0.1:8080:8000 dostres:local
 
 `http://127.0.0.1:8080` 화면, `/healthz` 200, `/readyz`는 DB 없으면 503(정상). 2026-11-21 확인: 이미지 299MB, 화면·새로고침·API·추천(`source: file`)·위기 안내·429·`APPLY_FORMS_JSON`으로 신청 시작, 컨테이너 안 정책 파이프라인(`--no-load --no-llm`, 41초, 정책 2,314) 동작, 이미지 안 `.env`·`*.local.json` 없음.
 
-### 9-3. Lightsail 배포 (처음 한 번)
+### 9-3. 운영 DB: Lightsail 관리형 PostgreSQL (2026-11-21 결정)
+
+확장성(회원·기록 저장, 변경 이력)을 실제 운영에서 보여 주려고 운영 DB를 쓴다. DB에 문제가 생기면 서비스는 이미지의 데이터 파일로 자동 대체한다(추천 계산 같음).
+
+1. Lightsail 콘솔 → 데이터베이스 → **PostgreSQL**, 리전 **서울(ap-northeast-2)**, 가장 작은 요금제(AWS 문서 기준 월 $15부터 — 콘솔에서 금액 확인), 표준(고가용성 아님). 데이터베이스 이름 `dostres` 등으로 지정, 사용자 이름·비밀번호는 콘솔에서 확인(비밀번호는 강하게, 레포·채팅에 쓰지 않음).
+2. 만들어지면 **엔드포인트**를 확인해 `DATABASE_URL`을 만든다: `postgresql+psycopg://<사용자>:<URL 인코딩한 비밀번호>@<엔드포인트>:5432/<DB 이름>`
+3. 컨테이너 환경변수에 `DATABASE_URL`과 `DB_AUTO_MIGRATE=true`를 넣고 배포 → 첫 시작에 테이블 생성 + 기본 데이터 적재, 이후 매일 스케줄러가 적재·변경 이력 기록.
+4. 배포 뒤 `https://…/readyz`가 **200이면 DB 연결 성공**. 503이면 연결 실패(서비스는 파일로 동작 중):
+   - Lightsail DB는 기본이 **비공개 모드**(같은 계정의 Lightsail 리소스만 접속)인데, 공식 문서에는 비공개 모드에 접속할 수 있는 대상으로 "인스턴스, 로드 밸런서 등"만 적혀 있고 **컨테이너 서비스가 되는지는 나와 있지 않다**.
+   - 503이면 DB의 네트워킹 탭에서 **공개 모드**를 켠다. 공개 모드는 엔드포인트·사용자·비밀번호를 아는 누구나 접속할 수 있으므로 비밀번호를 강하게 하고, **심사가 끝나면 DB를 삭제**한다(AWS도 공개 모드를 오래 켜 두지 말라고 권함).
+   - 2026-11-21 로컬 확인: 빈 PostgreSQL + `DB_AUTO_MIGRATE=true`로 컨테이너 시작 → 테이블 생성, 정책 2,335·프로그램 137 적재, `/readyz` 200, 추천 `source: db`. 재시작하면 적재를 건너뜀(`--if-empty`).
+
+### 9-4. Lightsail 배포 (처음 한 번)
 
 준비: AWS CLI(`winget install --id Amazon.AWSCLI -e`), Lightsail 플러그인 `lightsailctl`(AWS 문서의 설치 안내), `aws configure`(본인 키, 리전 `ap-northeast-2`). **키를 레포·채팅에 쓰지 않는다.**
 
@@ -143,15 +156,16 @@ aws lightsail get-container-services --region ap-northeast-2 --service-name dost
 | `YOUTH_POLICY_API_KEY`, `YOUTH_CENTER_API_KEY` | 온통청년 키 | 없으면 갱신만 실패, 서비스는 seed로 동작 |
 | `GMS_KEY`(또는 `OPENAI_API_KEY`), `OPENAI_BASE_URL`, `LLM_MODEL` | LLM | 없으면 대화·초안 503 |
 | `APPLY_FORMS_JSON` | 테스트 폼 목록 JSON | 없으면 신청은 `not_supported` |
-| `DATABASE_URL` | 운영 DB 주소 | **미정. 비우면 DB 없이 파일로 운영** (추천은 같은 계산) |
+| `DATABASE_URL` | 운영 DB 주소 (9-3) | 비우면 DB 없이 파일로 운영 (추천은 같은 계산) |
+| `DB_AUTO_MIGRATE` | `true` | 첫 시작에 테이블 생성·기본 데이터 적재 |
 | `ALLOWED_ORIGINS` | 비움 | 화면과 API가 같은 주소라 필요 없음 |
 
-### 9-4. 다시 배포 (코드 변경 후)
+### 9-5. 다시 배포 (코드 변경 후)
 
 `docker build …` → `push-container-image`(새 번호) → `containers.json`의 `image` 번호만 바꿔 `create-container-service-deployment`. 이전 배포는 콘솔에서 되돌릴 수 있다.
 
-### 9-5. 제출 후
+### 9-6. 제출 후
 
 - 11/23 제출 버전을 git 태그로 고정하고 심사 기간(11/24~30)에는 기능 변경을 멈춘다.
 - UptimeRobot 등에 `https://…/healthz` 등록(다운 알림).
-- **심사가 끝나면 컨테이너 서비스를 삭제**한다(`aws lightsail delete-container-service --service-name dostres --region ap-northeast-2`). 비활성화는 요금이 계속 나간다.
+- **심사가 끝나면 컨테이너 서비스와 DB를 삭제**한다(`aws lightsail delete-container-service --service-name dostres --region ap-northeast-2`, DB는 콘솔에서 삭제). 비활성화는 요금이 계속 나간다.

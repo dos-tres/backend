@@ -48,6 +48,24 @@ class SchedulerTests(unittest.TestCase):
         gate.set()
         t.join(5)
 
+    def test_prepare_runs_migration_then_seed_and_stops_on_failure(self):
+        from app.scheduler import prepare_database
+        calls = []
+        self.assertTrue(prepare_database(lambda args: calls.append(args[1]) or 0))
+        self.assertEqual(calls, ["alembic", "pipeline.load_catalog"])
+        calls.clear()
+        self.assertFalse(prepare_database(lambda args: calls.append(args[1]) or 1))
+        self.assertEqual(calls, ["alembic"])   # 테이블 만들기가 실패하면 적재는 안 함
+
+    def test_prepare_runs_before_first_pipeline(self):
+        order, done = [], threading.Event()
+        daily = DailyPipeline([], hour=4, runner=lambda: order.append("pipeline") or done.set() or 0,
+                              first_delay=0, prepare=lambda: order.append("prepare"))
+        daily.start()
+        self.assertTrue(done.wait(5))
+        daily.shutdown()
+        self.assertEqual(order[:2], ["prepare", "pipeline"])
+
     def test_app_starts_scheduler_only_when_enabled(self):
         with TestClient(create_app(Settings(_env_file=None))) as client:
             self.assertIsNone(client.app.app.state.daily_pipeline)

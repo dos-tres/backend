@@ -30,6 +30,30 @@ def pipeline_args(has_db: bool, has_llm: bool) -> list[str]:
     return args
 
 
+PREPARE_COMMANDS = [
+    ["-m", "alembic", "upgrade", "head"],                              # 테이블 만들기·바꾸기 (여러 번 해도 같음)
+    ["-m", "pipeline.load_catalog", "--seed", "--if-empty"],           # 비어 있으면 이미지의 기본 데이터 적재
+]
+
+
+def prepare_database(runner=None) -> bool:
+    """배포 첫 시작: 운영 DB 에 테이블을 만들고, 비어 있으면 기본 데이터를 넣는다 (DB_AUTO_MIGRATE).
+    실패해도 서버는 서비스 JSON 으로 계속 동작한다(조회 실패 시 파일로 대체)."""
+    run = runner or (lambda args: subprocess.run([sys.executable, *args], check=False).returncode)
+    for args in PREPARE_COMMANDS:
+        try:
+            code = run(args)
+        except Exception as exc:
+            logger.error("database prepare failed to run: %s", type(exc).__name__)
+            code = -1
+        if code != 0:
+            logger.error("database prepare step failed: %s (exit %s)", args[1], code)
+            return False
+    repository._fallback_rows.cache_clear()
+    logger.info("database prepared")
+    return True
+
+
 def seconds_until(hour: int, now: datetime | None = None) -> float:
     now = now or datetime.now()
     target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
@@ -39,8 +63,10 @@ def seconds_until(hour: int, now: datetime | None = None) -> float:
 
 
 class DailyPipeline:
-    def __init__(self, args: list[str], hour: int, runner=None, first_delay: float = FIRST_RUN_DELAY):
+    def __init__(self, args: list[str], hour: int, runner=None, first_delay: float = FIRST_RUN_DELAY,
+                 prepare=None):
         self.args, self.hour, self.first_delay = args, hour, first_delay
+        self.prepare = prepare   # 첫 실행 전에 한 번 (DB 준비). 같은 스레드라 적재와 겹치지 않는다
         self.runner = runner or self._run_subprocess
         self.stop = threading.Event()
         self.lock = threading.Lock()
@@ -78,6 +104,8 @@ class DailyPipeline:
             self.lock.release()
 
     def _loop(self) -> None:
+        if self.prepare is not None and not self.stop.is_set():
+            self.prepare()
         if self.stop.wait(self.first_delay):
             return
         self.run_once()

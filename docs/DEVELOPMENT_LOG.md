@@ -10,7 +10,8 @@
 - `app/limits.py`: LLM 요청(대화·초안) 접속자당 1분 10·하루 100, 전체 하루 2,000 → 429 `RATE_LIMITED`. 위기 안내는 제한 없음.
 - 배포 방법: `docs/DEPLOYMENT.md` 9장, `deploy/containers.example.json`·`public-endpoint.json` (`containers.json`은 Git 제외).
 - 검증: 신규 테스트(web 4, scheduler 5, limits 4, 폼 목록 1) 포함 전체 통과. 로컬 이미지(299MB) 실행: 화면·새로고침·API·추천(file)·위기 안내·11번째 대화 429·환경변수 폼으로 신청 시작, 컨테이너 안 정책 파이프라인 41초(정책 2,314), 이미지 안 비밀 파일 없음.
-- 아직: Lightsail 실제 배포(AWS 계정·키는 사용자), 운영 DB 결정(지금은 파일만), LLM 키.
+- 운영 DB: Lightsail 관리형 PostgreSQL(서울)로 결정. `DB_AUTO_MIGRATE`로 시작 시 `alembic upgrade head` + 비어 있으면 기본 데이터 적재(`load_catalog --if-empty`, 스케줄러와 같은 스레드). 로컬 빈 DB로 컨테이너 확인: 테이블 생성·2,335/137 적재·`/readyz` 200·추천 `source: db`, 재시작 시 건너뜀. 컨테이너 서비스가 비공개 모드 DB에 붙는지는 AWS 문서에 없음 → 안 되면 공개 모드(강한 비밀번호, 심사 후 삭제).
+- 아직: Lightsail 실제 배포(AWS 계정·키는 사용자), LLM 키.
 
 ## 2026-11-21 — FE 연결 안내와 '시 전체' 지역 코드
 

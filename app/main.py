@@ -1,4 +1,5 @@
 import logging
+import threading
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 
@@ -19,7 +20,7 @@ from app.apply.router import router as apply_router
 from app.chat.router import router as chat_router
 from app.recommend.router import router as recommend_router
 from app.limits import RateLimited, UsageLimiter
-from app.scheduler import DailyPipeline, pipeline_args
+from app.scheduler import DailyPipeline, pipeline_args, prepare_database
 from app.web import web_files
 
 logger = logging.getLogger(__name__)
@@ -46,10 +47,14 @@ def create_app(settings: Settings | None = None) -> CORSMiddleware:
         database = Database(url) if url else None
         api.state.database = database
         daily = None
+        prepare = prepare_database if (url and settings.db_auto_migrate) else None
         if settings.scheduler_enabled:
             daily = DailyPipeline(pipeline_args(bool(url), bool(settings.llm_api_key.get_secret_value())),
-                                  settings.scheduler_hour)
+                                  settings.scheduler_hour, prepare=prepare)
             daily.start()
+        elif prepare is not None:
+            # 서버가 먼저 뜨도록(헬스체크) 뒤에서 한다. 끝나기 전 요청은 서비스 JSON 으로 응답
+            threading.Thread(target=prepare, name="db-prepare", daemon=True).start()
         api.state.daily_pipeline = daily
         try:
             yield

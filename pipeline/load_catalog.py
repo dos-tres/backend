@@ -4,6 +4,7 @@
   python -m pipeline.load_catalog --seed          # data/seed/serving/ 의 기본 데이터를 적재 (첫 배포·로컬 개발)
   python -m pipeline.load_catalog --kind program  # 하나만
   python -m pipeline.load_catalog --force         # 건수가 크게 줄어도 적재 (평소에는 쓰지 않는다)
+  python -m pipeline.load_catalog --seed --if-empty  # 그 kind 가 비어 있을 때만 (배포 첫 시작, app/scheduler.py)
 
 DATABASE_URL 은 앱과 같은 설정(프로세스 환경변수 → 저장소 루트 .env)을 쓴다.
 정책과 프로그램은 각각 한 트랜잭션: 실패하면 그 kind 는 어제 데이터가 그대로 남는다.
@@ -14,7 +15,10 @@ import argparse
 import json
 import sys
 
+from sqlalchemy import select
+
 from app.catalog.load import build_rows, upsert_catalog
+from app.catalog.models import CatalogItem
 from app.config import Settings
 from app.database import Database
 from pipeline import paths
@@ -35,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--seed", action="store_true")
     ap.add_argument("--kind", choices=sorted(FILES))
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--if-empty", action="store_true", help="이미 행이 있는 kind 는 건너뛴다")
     args = ap.parse_args(argv)
 
     url = Settings().database_url.get_secret_value()
@@ -45,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
     failed = False
     try:
         for kind in [args.kind] if args.kind else ["policy", "program"]:
+            if args.if_empty:
+                with database.sessions() as session:
+                    if session.scalar(select(CatalogItem.id).where(CatalogItem.kind == kind).limit(1)):
+                        print(f"{kind}: 이미 적재돼 있어 건너뜀 (--if-empty)")
+                        continue
             path = serving_path(kind, args.seed)
             rows = build_rows(kind, json.loads(path.read_text(encoding="utf-8")))
             try:
