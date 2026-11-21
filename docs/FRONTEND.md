@@ -169,12 +169,17 @@ AI 비서 ── POST /api/chat (매번 전체 대화 + profile + checkin)
 
 실제 응답 예시·필드 설명은 [APPLY.md](APPLY.md) **9-5장**. 흐름만 요약:
 
-1. `start` `{"item_id", "applicant": {"name", "birth_date": "YYYY-MM-DD", "phone", "email"}, "profile"}`
-   - `available: true` → `replies` 보여 주고, `filled`(채운 값) 확인 [맞아요]/[고칠래요] → `questions`를 **하나씩** 말풍선(`prompt`)으로 묻기
+개인정보 줄이기(치환·AI 전달 내용 보기)는 [APPLY.md](APPLY.md) **9-6장**.
+
+1. `start` `{"item_id", "profile"}` — **`applicant`(이름·연락처)는 보내지 않는다**
+   - `questions` 중 `fill_key`(`name`·`birth_date`·`phone`·`email`)가 있는 칸은 **기기에 저장된 값으로 FE가 채우고** 확인만 받는다(값이 없으면 `prompt`로 묻기). `birth_date`는 `YYYY.MM.DD`로 넣기
+   - `available: true` → `replies` 보여 주고, 채운 값(`filled` + FE가 채운 칸) 확인 [맞아요]/[고칠래요] → 나머지 `questions`를 **하나씩** 말풍선(`prompt`)으로 묻기
      - `kind`: `short`·`long`(입력 칸, `prefill` 있으면 미리 채우기, `hint` 아래에) / `choice`·`multi`(버튼, `other: true`면 '기타' 입력) / `agree`(`description` 원문을 보여 주고 사용자가 직접 고름) / `date`
      - `required: false`면 건너뛰기 가능, `can_draft: true`면 [초안 써 줘요] → `draft`
    - `available: false` → `reason`: `closed`(마감, `closed_message`) / `not_supported`·`unreachable`(공식 링크 `official_url`) — `replies`·`choices` 그대로 보여 주기
 2. `draft` `{"item_id", "question_id", "messages", "profile", "checkin", "previous"}` → `draft` 를 입력 칸에. 지금 503.
+   - 보내기 전 `messages`·`previous` 안의 이름·생일·연락처·이메일을 `[이름]`·`[생년월일]`·`[연락처]`·`[이메일]`로 바꾼다. 받은 `draft`의 자리 표시(`placeholders`)는 기기 값으로 되돌린다.
+   - [AI에 전달되는 내용 보기]: 같은 요청에 `"preview": true` → `ai_input`(LLM에 보낼 글 그대로)을 보여 주기. LLM 키 없어도 됨.
 3. 마지막에 답 요약 → **사용자가 [제출하기]를 눌렀을 때만** `submit` `{"item_id", "applicant", "answers": {"q1": "...", ...}}`
    - `answers` = `filled` 값(고친 값) + `questions` 답. `multi`는 배열.
    - 성공 `{"status": "submitted", "confirmed_by": "server", "submitted_at", "replies", "choices"}` → 신청 기록·일정 저장(로컬)

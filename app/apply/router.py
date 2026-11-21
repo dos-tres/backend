@@ -43,6 +43,7 @@ class DraftRequest(BaseModel):
     profile: Profile | None = None
     checkin: dict[str, Any] = Field(default_factory=dict)
     previous: str | None = Field(None, max_length=2000)
+    preview: bool = Field(False, description="true 면 LLM 을 부르지 않고 AI 에 보낼 글(ai_input)만 돌려준다")
 
 
 class SubmitRequest(BaseModel):
@@ -75,7 +76,8 @@ def draft(body: DraftRequest, request: Request, session: Session | None = Depend
     try:
         return service.draft(session, request.app.state.chat_model, forms(request), body.item_id,
                              body.question_id, [m.model_dump() for m in body.messages],
-                             body.profile.model_dump() if body.profile else None, body.checkin, body.previous)
+                             body.profile.model_dump() if body.profile else None, body.checkin, body.previous,
+                             preview=body.preview)
     except service.NotAvailable:
         return _error(404, "APPLY_NOT_AVAILABLE", "No draft for this item or question")
     except gform.FormError as exc:

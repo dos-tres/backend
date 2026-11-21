@@ -44,7 +44,7 @@ FastAPI 실행 기반을 구현했습니다. GET /healthz, Swagger UI(/docs), �
 | POST | /api/recommendations | 기본 정보 + 답변 → 정책 6 · 프로그램 4 |
 | POST | /api/chat | 대화 한 턴 → 답장, 알아들은 상태 체크 답, 선택지, 추천·검색 결과 (LLM 키 필요, 위기 안내는 키 없이도) |
 | POST | /api/apply/start | 챗봇 신청 시작: 테스트 구글폼을 읽어 채운 문항·물을 문항 ([신청 흐름](docs/APPLY.md)) |
-| POST | /api/apply/draft | 신청서 긴 답 초안 (LLM 키 필요) |
+| POST | /api/apply/draft | 신청서 긴 답 초안 (LLM 키 필요). `preview: true`면 AI에 보낼 글만 돌려줌 |
 | POST | /api/apply/submit | 사용자가 제출을 눌렀을 때 구글폼 제출 |
 
 **FE 연결 안내: [docs/FRONTEND.md](docs/FRONTEND.md)** — 화면별 API, 실제 응답 예시, 오류 처리, FE와 맞춰야 하는 값 14가지.

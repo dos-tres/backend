@@ -24,7 +24,7 @@ DRAFT_SYSTEM = """너는 청년 지원 서비스 '둘셋'의 AI 비서 조이다
 규칙
 - 사용자 본인이 쓰는 1인칭 존댓말(~습니다/~어요 섞지 말고 ~습니다체)로 쓴다.
 - 아래 '사용자에 대해 아는 것'과 '대화'에 있는 사실만 쓴다. 경험·자격·학력·숫자·기관 이름을 지어내지 않는다. 모르는 부분은 일반적인 기대·바람으로 쓴다.
-- 이름·연락처·주소를 쓰지 않는다.
+- 이름·연락처·주소를 쓰지 않는다. 대화에 [이름]·[생년월일]·[연락처]·[이메일] 같은 자리 표시가 있으면 꼭 필요할 때만 그 표시를 그대로 쓰고, 실제 값을 짐작해 넣지 않는다.
 - 문항이 묻는 것에만 답한다. {limit}자 이내, 2~4문장.
 - 진단·위험 같은 말이나 상태 체크 점수를 그대로 쓰지 않는다.
 JSON 으로만 답한다: {{"draft": "..."}}"""
@@ -32,6 +32,18 @@ JSON 으로만 답한다: {{"draft": "..."}}"""
 
 class NotAvailable(Exception):
     pass
+
+
+# FE 가 이름·생일·연락처·이메일을 이 표시로 바꿔 보내고, 초안을 받으면 기기 값으로 되돌린다 (docs/APPLY.md 9-6).
+PLACEHOLDERS = ("[이름]", "[생년월일]", "[연락처]", "[이메일]")
+_PHONE = re.compile(r"(?<!\d)01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}(?!\d)")
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def mask(text: str) -> str:
+    """FE 치환이 빠졌을 때의 안전망: 휴대폰 번호·이메일은 LLM 에 보내기 전에 서버에서도 가린다.
+    이름은 서버가 알아볼 수 없으므로 FE 치환이 맡는다."""
+    return _EMAIL.sub("[이메일]", _PHONE.sub("[연락처]", text))
 
 
 def _item_info(session: Session | None, item_id: str, form: gform.Form | None) -> dict:
@@ -51,9 +63,11 @@ def _official_url(row: dict) -> str | None:
     return urls[0] if urls else None
 
 
-def _question_json(q: gform.Question, prefill: str | None, can_draft: bool) -> dict:
+def _question_json(q: gform.Question, prefill: str | None, can_draft: bool, fill_key: str | None = None) -> dict:
     out = {"id": q.id, "label": q.label, "kind": q.kind, "required": q.required,
            "prompt": fill.prompt_for(q, prefill, can_draft)}
+    if fill_key:
+        out["fill_key"] = fill_key   # FE 가 기기에 둔 값으로 채우고 확인만 받는다. 값이 없으면 prompt 로 묻는다
     if q.options:
         out["options"] = q.options
     if q.other:
@@ -111,7 +125,7 @@ def start(session: Session | None, forms: dict[str, dict], item_id: str, applica
     return {"channel": "form", "available": True,
             "item": {"id": item_id, "title": info["title"]},
             "filled": filled,
-            "questions": [_question_json(a["question"], a["prefill"], a["can_draft"]) for a in ask],
+            "questions": [_question_json(a["question"], a["prefill"], a["can_draft"], a["fill_key"]) for a in ask],
             "replies": replies,
             "choices": ([{"type": "apply_confirm", "label": "맞아요"}, {"type": "apply_edit", "label": "고칠래요"}]
                         if filled else [])}
@@ -147,7 +161,8 @@ def _limit_from(q: gform.Question) -> int:
 
 def draft(session: Session | None, model: ChatModel | None, forms: dict[str, dict], item_id: str,
           question_id: str, messages: list[dict], profile: dict | None, checkin: dict,
-          previous: str | None, fetch=gform.fetch) -> dict:
+          previous: str | None, fetch=gform.fetch, preview: bool = False) -> dict:
+    """preview=True 면 LLM 을 부르지 않고, AI 에 보낼 글을 그대로 돌려준다 ('AI에 전달되는 내용 보기')."""
     entry = forms.get(item_id)
     if entry is None:
         raise NotAvailable(item_id)
@@ -155,7 +170,7 @@ def draft(session: Session | None, model: ChatModel | None, forms: dict[str, dic
     q = next((q for q in form.questions if q.id == question_id), None)
     if q is None or q.kind != "long":
         raise NotAvailable(question_id)
-    if model is None:
+    if model is None and not preview:
         raise LLMUnavailable("not configured")
     info = _item_info(session, item_id, form)
     limit = _limit_from(q)
@@ -172,20 +187,24 @@ def draft(session: Session | None, model: ChatModel | None, forms: dict[str, dic
             known.append("관심 분야: " + ", ".join(s["interests"]))
         if s.get("notes"):
             known.append("상태 체크에서 한 말: " + " / ".join(s["notes"][:4]))
-    said = [m["content"] for m in messages if m.get("role") == "user"][-8:]
+    said = [mask(m["content"]) for m in messages if m.get("role") == "user"][-8:]
     user = "\n".join([
         f"프로그램: {info['title']}",
         f"프로그램 소개: {info['summary'] or '(없음)'}",
         f"문항: {q.label}" + (f" ({q.hint})" if q.hint else ""),
         "사용자에 대해 아는 것: " + ("; ".join(known) if known else "(거의 없음)"),
         "대화에서 사용자가 한 말: " + (" / ".join(said) if said else "(없음)"),
-        *([f"이전 초안(다르게 다시 써 줘): {previous}"] if previous else []),
+        *([f"이전 초안(다르게 다시 써 줘): {mask(previous)}"] if previous else []),
     ])
+    if preview:
+        return {"question_id": q.id, "ai_input": user}
     data = model.complete_json(DRAFT_SYSTEM.format(limit=limit), [{"role": "user", "content": user}])
     text = " ".join(str(data.get("draft") or "").split())
     if not text:
         raise LLMUnavailable("empty draft")
-    return {"question_id": q.id, "draft": text[:limit],
+    text = text[:limit]
+    return {"question_id": q.id, "draft": text,
+            "placeholders": [p for p in PLACEHOLDERS if p in text],   # FE 가 기기 값으로 되돌릴 자리 표시
             "replies": ["이렇게 써 봤어요. 고칠 데 있으면 고쳐 주세요."],
             "choices": [{"type": "draft_accept", "label": "이대로"}, {"type": "draft_retry", "label": "다시 써 줘"},
                         {"type": "draft_edit", "label": "직접 고칠게요"}]}
