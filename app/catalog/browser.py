@@ -34,6 +34,8 @@ def full_item(row, sigungu_cd='11620', today=None):
                  'age_min': row['age_min'], 'age_max': row['age_max'],
                  'updated_at': p.get('lastMdfcnDt') or '',
                  'reference_url': (p.get('refUrlAddr1') or p.get('refUrlAddr2') or '') if policy else p.get('url') or ''})
+    from app.catalog.program_facts import presentation
+    item.update(presentation(row))
     return item
 
 

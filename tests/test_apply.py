@@ -113,7 +113,7 @@ class FillTests(unittest.TestCase):
         self.assertEqual(keys["q1"], "name")
         self.assertEqual(keys["q4"], "phone")
         self.assertIsNone(keys["q6"])
-        self.assertNotIn("fill_key", next(f for f in filled if f["question_id"] == "q2"))   # 나이는 profile 로 채움
+        self.assertEqual(next(f for f in filled if f["question_id"] == "q2")["fill_key"], "age")
         filled, _ = fill.split(form.questions, APPLICANT, PROFILE)
         self.assertEqual(next(f for f in filled if f["question_id"] == "q1")["fill_key"], "name")
 
@@ -238,6 +238,14 @@ class ApplyApiTests(unittest.TestCase):
         self.post.return_value = response(page(), VIEW, 200)
         r = self.client.post("/api/apply/submit", json={"item_id": "demo:open", "answers": FULL})
         self.assertEqual((r.status_code, r.json()["error"]["code"]), (502, "APPLY_SUBMIT_FAILED"))
+
+    def test_changed_form_stops_before_external_submit(self):
+        self.get.return_value=response(page(),VIEW)
+        revision=self.client.post('/api/apply/start',json={'item_id':'demo:open'}).json()['form_revision']
+        self.get.return_value=response(page(title='변경된 신청서'),VIEW)
+        r=self.client.post('/api/apply/submit',json={'item_id':'demo:open','answers':FULL,'form_revision':revision})
+        self.assertEqual((r.status_code,r.json()['error']['code']),(409,'APPLY_FORM_CHANGED'))
+        self.post.assert_not_called()
 
     def test_submit_failures(self):
         self.post.return_value = response("err", VIEW, 400)

@@ -20,7 +20,7 @@ RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"거주|사는\s*곳|사시는\s*곳|주소|지역"), "region"),
 ]
 # FE 가 기기에 둔 값으로 직접 채우는 개인정보 칸. BE 는 이 값을 몰라도 된다 (start 에 applicant 를 안 보내도 됨).
-PERSONAL_KEYS = ("name", "birth_date", "phone", "email")
+PERSONAL_KEYS = ("name", "birth_date", "phone", "email", "age", "sex", "region")
 NEEDS_DONG =re.compile(r"동\s*까지|OO동|○○동|읍·?면·?동")
 DRAFTABLE = re.compile(r"이유|동기|계기|소개|기대|각오|목표|하고\s*싶은|바라는|사연|포부|자유롭게|의견")
 

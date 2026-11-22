@@ -27,6 +27,7 @@ STEPS = [
     ("서울청년센터", ["pipeline/programs/crawl/seoul_orang.py"], "program"),
     ("그누보드", ["pipeline/programs/crawl/gnuboard.py"], "program"),
     ("프로그램 통합", ["pipeline/programs/crawl/merge.py"], "program"),
+    ("프로그램 정보 추출", ["-m", "pipeline.programs.extract_facts"], "program"),
     ("프로그램 분류", ["pipeline/programs/classify.py"], "program"),
 ]
 
@@ -48,12 +49,12 @@ def main(argv: list[str] | None = None) -> int:
 
     broken: set[str] = set()
     for name, cmd, group in STEPS:
-        if group in {"program", "center-content"} and args.skip_crawl and "classify" not in cmd[0]:
+        if group in {"program", "center-content"} and args.skip_crawl and "classify" not in cmd[0] and "pipeline.programs.extract_facts" not in cmd:
             continue
         if group in broken:
             print(f"- {name}: 앞 단계 실패로 건너뜀")
             continue
-        if args.no_llm and cmd[0].endswith("classify.py"):
+        if args.no_llm and (cmd[0].endswith("classify.py") or "pipeline.programs.extract_facts" in cmd):
             cmd = [*cmd, "--no-llm"]
         if cmd[0].endswith("seoul_orang.py") and not (PROGRAM_DIR / "seoul_orang" / "programs.csv").exists():
             cmd = [*cmd, "--full"]   # 첫 실행(새 컨테이너)은 목록 전체를 받는다

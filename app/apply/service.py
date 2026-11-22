@@ -8,6 +8,9 @@ submit : 사용자가 [제출하기]를 눌렀을 때만. 답을 검증하고 �
 from __future__ import annotations
 
 import re
+import json
+import hashlib
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
@@ -50,7 +53,8 @@ def _item_info(session: Session | None, item_id: str, form: gform.Form | None) -
     row = get_item(session, item_id)
     if row:
         p = row["payload"]
-        summary = p.get("summary") or p.get("plcyExplnCn") or ""
+        from app.catalog.program_facts import presentation
+        summary = presentation(row).get("summary") if row["kind"]=="program" else p.get("plcyExplnCn") or ""
         return {"id": item_id, "title": row["title"], "summary": " ".join(summary.split())[:400],
                 "official_url": _official_url(row)}
     return {"id": item_id, "title": form.title if form else item_id,
@@ -83,6 +87,15 @@ def _question_json(q: gform.Question, prefill: str | None, can_draft: bool, fill
     return out
 
 
+class FormChanged(Exception):
+    pass
+
+
+def form_revision(form):
+    data={'title':form.title,'description':form.description,'questions':[asdict(q) for q in form.questions],'submit_url':form.submit_url}
+    return hashlib.sha256(json.dumps(data,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+
+
 def start(session: Session | None, forms: dict[str, dict], item_id: str, applicant: dict | None,
           profile: dict | None, fetch=gform.fetch) -> dict:
     entry = forms.get(item_id)
@@ -97,21 +110,23 @@ def start(session: Session | None, forms: dict[str, dict], item_id: str, applica
         form = fetch(entry["form_url"])
     except gform.FormClosed as exc:
         info = _item_info(session, item_id, None)
+        info["title"] = entry.get("title") or info["title"]
         replies = ["아쉽게도 이 신청은 마감됐어요."]
         if exc.message:
             replies.append(f"기관 안내로는 \"{exc.message}\"라고 해요. 비슷한 지원을 찾아볼까요?")
         else:
             replies.append("비슷한 지원을 찾아볼까요?")
-        return {"channel": "form", "available": False, "reason": "closed",
+        return {"channel": "form", "test_only":bool(entry.get("test_only")), "available": False, "reason": "closed",
                 "item": {"id": item_id, "title": info["title"]}, "closed_message": exc.message,
                 "official_url": info["official_url"], "replies": replies,
                 "choices": [{"type": "message", "label": "비슷한 지원 찾기", "text": "비슷한 지원 찾아 줘"},
                             {"type": "message", "label": "다른 추천 보기", "text": "나한테 맞는 지원 추천해 줘"}]}
     except gform.FormError as exc:
         info = _item_info(session, item_id, None)
+        info["title"] = entry.get("title") or info["title"]
         text = ("지금 신청서를 열 수 없어요. 공식 페이지에서 확인해 주세요." if exc.reason == "unreachable"
                 else "이 신청서는 조이가 대신 쓸 수 없는 형식이라, 공식 페이지에서 신청해야 해요.")
-        return {"channel": "form", "available": False, "reason": exc.reason,
+        return {"channel": "form", "test_only":bool(entry.get("test_only")), "available": False, "reason": exc.reason,
                 "item": {"id": item_id, "title": info["title"]}, "official_url": info["official_url"],
                 "replies": [text], "choices": []}
 
@@ -122,7 +137,7 @@ def start(session: Session | None, forms: dict[str, dict], item_id: str, applica
         summary = " · ".join(f"{f['label'] if len(f['label']) <= 8 else _short_label(f['label'])} {f['value']}"
                              for f in filled)
         replies.append(f"알고 있는 정보로 채웠어요. {summary}")
-    return {"channel": "form", "available": True,
+    return {"channel": "form", "test_only":bool(entry.get("test_only")), "available": True, "form_revision":form_revision(form),
             "item": {"id": item_id, "title": info["title"]},
             "filled": filled,
             "questions": [_question_json(a["question"], a["prefill"], a["can_draft"], a["fill_key"]) for a in ask],
@@ -136,11 +151,13 @@ def _short_label(label: str) -> str:
 
 
 def submit(session: Session | None, forms: dict[str, dict], item_id: str, answers: dict,
-           fetch=gform.fetch, post=None) -> dict:
+           fetch=gform.fetch, post=None, expected_revision: str | None = None) -> dict:
     entry = forms.get(item_id)
     if entry is None:
         raise NotAvailable(item_id)
     form = fetch(entry["form_url"])          # 마감·형식 변경이면 FormError
+    if expected_revision and expected_revision != form_revision(form):
+        raise FormChanged()
     if post is None:
         gform.submit(form, answers)          # InvalidAnswers / SubmitFailed
     else:
@@ -149,7 +166,7 @@ def submit(session: Session | None, forms: dict[str, dict], item_id: str, answer
     return {"status": "submitted", "confirmed_by": "server",
             "submitted_at": datetime.now(KST).isoformat(timespec="seconds"),
             "item": {"id": item_id, "title": info["title"]},
-            "replies": ["신청 완료됐어요!", "결과는 센터에서 연락이 올 거예요. 신청 기록에 남기고 일정도 넣어 둘까요?"],
+            "replies": ["신청 완료됐어요!", "접수는 선정이나 참여 확정과 달라요. 신청 기록과 일정을 남길 수 있어요."],
             "choices": [{"type": "record", "label": "기록하고 일정 넣기"}, {"type": "message", "label": "괜찮아요",
                                                                       "text": "괜찮아요"}]}
 

@@ -24,7 +24,7 @@ OUT = DATA / "programs.csv"
 COLS = ["program_id", "source", "kind", "center_sns", "center_names", "region_cds", "sido_cd",
         "title", "category", "status", "is_active",
         "aply_start", "aply_end", "aply_text", "prog_start", "prog_end", "prog_text",
-        "place", "target", "posted_at", "summary", "url", "apply_urls", "image_url",
+        "place", "target", "posted_at", "source_content", "summary", "url", "apply_urls", "image_url",
         "source_name", "first_seen", "last_seen", "merged_at"]
 
 TODAY = date.today().isoformat()
@@ -181,8 +181,8 @@ def from_orang(r, links=NO_RESOLVE):
         "aply_start": r["aply_start"], "aply_end": r["aply_end"], "aply_text": r["aply_text"],
         "prog_start": r["prog_start"], "prog_end": r["prog_end"], "prog_text": r["prog_text"],
         "place": r["place"], "target": r.get("target", ""), "posted_at": "",
-        "summary": summarize(r.get("content")), "url": r["list_url"],
-        "apply_urls": " ".join(forms or urls[:2]), "image_url": r["image_url"],
+        "source_content":r.get("content", ""), "summary": summarize(r.get("content")), "url": r["list_url"],
+        "apply_urls": " ".join(forms), "image_url": r["image_url"],
         "source_name": "서울청년센터(youth.seoul.go.kr)", "first_seen": r["first_seen"], "last_seen": r["last_seen"],
     }
 
@@ -206,7 +206,7 @@ def from_gnuboard(p, links=NO_RESOLVE):
         "aply_start": a0, "aply_end": a1, "aply_text": atext,
         "prog_start": p0, "prog_end": p1, "prog_text": ptext,
         "place": "", "target": "", "posted_at": p["posted_at"],
-        "summary": summarize(p["content"]) or ("(회원 전용 글 — 본문 없음)" if p["note"] == "login_required" else ""),
+        "source_content":p["content"], "summary": summarize(p["content"]) or ("(회원 전용 글 — 본문 없음)" if p["note"] == "login_required" else ""),
         "url": p["url"], "apply_urls": " ".join(forms[:3]),
         "image_url": (p["image_urls"].split() or [""])[0],
         "source_name": f"{p['center_names'].split(';')[0]} 홈페이지 ({p['board_label']})",

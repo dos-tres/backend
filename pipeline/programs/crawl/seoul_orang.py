@@ -133,7 +133,7 @@ def parse_view(html):
             if u not in urls:
                 urls.append(u)
     return {"target": info.get("대상", ""), "org": info.get("담당기관", ""), "address": info.get("찾아가기", ""),
-            "org_link": org_link, "category": next((c for c in cats if c in CATEGORIES), ""), "content": content[:4000], "content_urls": " ".join(urls[:5])}
+            "org_link": org_link, "category": next((c for c in cats if c in CATEGORIES), ""), "content": content, "content_urls": " ".join(urls[:5])}
 
 
 def is_relevant(row, today, days):

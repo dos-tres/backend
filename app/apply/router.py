@@ -48,6 +48,7 @@ class DraftRequest(BaseModel):
 
 
 class SubmitRequest(BaseModel):
+    form_revision: str | None = Field(None, pattern=r"^[a-f0-9]{64}$")
     item_id: str = Field(..., max_length=120)
     applicant: Applicant | None = None
     answers: dict[str, str | list[str]] = Field(..., description="문항 id → 답 (filled 의 값 + questions 의 답)")
@@ -89,9 +90,11 @@ def draft(body: DraftRequest, request: Request, session: Session | None = Depend
 @router.post("/submit")
 def submit(body: SubmitRequest, request: Request, session: Session | None = Depends(optional_db)):
     try:
-        return service.submit(session, forms(request), body.item_id, body.answers)
+        return service.submit(session, forms(request), body.item_id, body.answers, expected_revision=body.form_revision)
     except service.NotAvailable:
         return _error(404, "APPLY_NOT_AVAILABLE", "This item cannot be submitted by the assistant")
+    except service.FormChanged:
+        return _error(409,"APPLY_FORM_CHANGED","Form questions changed; review again")
     except gform.InvalidAnswers as exc:
         return _error(422, "APPLY_INVALID", "Some answers are missing or invalid", missing=exc.missing,
                       invalid=exc.invalid)

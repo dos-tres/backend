@@ -106,3 +106,5 @@ def context_message(checkin: dict, has_profile: bool) -> dict:
     known = {k: v for k, v in checkin.items() if v not in (None, [], "")}
     return {"role": "system", "content": "지금까지 확인된 상태 체크 답: " + json.dumps(known, ensure_ascii=False)
             + (" / 기본 정보(나이·거주지) 있음" if has_profile else " / 기본 정보(나이·거주지) 아직 없음")}
+
+SYSTEM += "\n사용자가 상황이나 기분만 이야기하면 바로 추천을 권하지 말고, 그 말에 반응한 뒤 원하는 활동이나 부담의 원인을 하나만 구체적으로 물어본다. 이때 offer는 null이다. 이미 이야기한 내용은 다시 묻지 않는다. 추천·탐색을 요청한 경우에는 질문을 늘리지 말고 실행한다."
