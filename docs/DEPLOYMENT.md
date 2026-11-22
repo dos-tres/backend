@@ -94,7 +94,13 @@ APP_ENV, ALLOWED_ORIGINS, DATABASE_URL은 현재 backend가 읽는다. 나머지
 
 ## 9. 배포 방법 (AWS Lightsail 컨테이너, 2026-11-21)
 
-팀 결정(노션 「배포 및 운영 결정」): Lightsail 컨테이너 Micro(서울), Docker 이미지 1개(FE 화면 + API), 앱 안 스케줄러, 비밀값은 배포 환경변수로만.
+팀 결정(노션 「배포 및 운영 결정」): Lightsail 컨테이너 Micro(시드니 — 2026-11-22 서울에서 변경, 아래 9-0), Docker 이미지 1개(FE 화면 + API), 앱 안 스케줄러, 비밀값은 배포 환경변수로만.
+
+### 9-0. 리전: 시드니 (2026-11-22 변경)
+
+배포 계정은 AWS 조직의 멤버 계정이고, 조직의 리전 제한 정책(SCP `AdvancedModeRegionRestrictionSecurityControlPolicy`)이 시드니(`ap-southeast-2`)·버지니아·오리건 밖의 리전을 막는다. 서울(`ap-northeast-2`)은 Lightsail 조회부터 거부되고, 시드니는 Lightsail이 정상 동작한다. 그래서 컨테이너와 DB를 모두 시드니에 둔다. 마감 전날 보안 정책을 고치는 위험을 피하려는 선택이며, 한국에서 접속할 때 응답 지연은 약 0.1초 늘어난다.
+
+- 2026-11-22 생성(실제): DB `dostres-db`(PostgreSQL 17, `micro_2_0` 월 $15, 비공개 모드, DB 이름·사용자 `dostres`, 비밀번호는 AWS 자동 생성), 컨테이너 서비스 `dostres`(micro, scale 1, 월 $10). 이미지 배포는 아직이다.
 
 ### 9-1. 이미지에 들어 있는 것
 
@@ -123,7 +129,7 @@ docker run --rm -p 127.0.0.1:8080:8000 dostres:local
 
 확장성(회원·기록 저장, 변경 이력)을 실제 운영에서 보여 주려고 운영 DB를 쓴다. DB에 문제가 생기면 서비스는 이미지의 데이터 파일로 자동 대체한다(추천 계산 같음).
 
-1. Lightsail 콘솔 → 데이터베이스 → **PostgreSQL**, 리전 **서울(ap-northeast-2)**, 가장 작은 요금제(AWS 문서 기준 월 $15부터 — 콘솔에서 금액 확인), 표준(고가용성 아님). 데이터베이스 이름 `dostres` 등으로 지정, 사용자 이름·비밀번호는 콘솔에서 확인(비밀번호는 강하게, 레포·채팅에 쓰지 않음).
+1. Lightsail 콘솔 → 데이터베이스 → **PostgreSQL**, 리전 **시드니(ap-southeast-2)**, 가장 작은 요금제(AWS 문서 기준 월 $15부터 — 콘솔에서 금액 확인), 표준(고가용성 아님). 데이터베이스 이름 `dostres` 등으로 지정, 사용자 이름·비밀번호는 콘솔에서 확인(비밀번호는 강하게, 레포·채팅에 쓰지 않음).
 2. 만들어지면 **엔드포인트**를 확인해 `DATABASE_URL`을 만든다: `postgresql+psycopg://<사용자>:<URL 인코딩한 비밀번호>@<엔드포인트>:5432/<DB 이름>`
 3. 컨테이너 환경변수에 `DATABASE_URL`과 `DB_AUTO_MIGRATE=true`를 넣고 배포 → 첫 시작에 테이블 생성 + 기본 데이터 적재, 이후 매일 스케줄러가 적재·변경 이력 기록.
 4. 배포 뒤 `https://…/readyz`가 **200이면 DB 연결 성공**. 503이면 연결 실패(서비스는 파일로 동작 중):
@@ -133,18 +139,18 @@ docker run --rm -p 127.0.0.1:8080:8000 dostres:local
 
 ### 9-4. Lightsail 배포 (처음 한 번)
 
-준비: AWS CLI(`winget install --id Amazon.AWSCLI -e`), Lightsail 플러그인 `lightsailctl`(AWS 문서의 설치 안내), `aws configure`(본인 키, 리전 `ap-northeast-2`). **키를 레포·채팅에 쓰지 않는다.**
+준비: AWS CLI(`winget install --id Amazon.AWSCLI -e`), Lightsail 플러그인 `lightsailctl`(AWS 문서의 설치 안내), `aws configure`(본인 키, 리전 `ap-southeast-2`). **키를 레포·채팅에 쓰지 않는다.**
 
 ```
-aws lightsail create-container-service --service-name dostres --power micro --scale 1 --region ap-northeast-2
-aws lightsail push-container-image --region ap-northeast-2 --service-name dostres --label app --image dostres:local
+aws lightsail create-container-service --service-name dostres --power micro --scale 1 --region ap-southeast-2
+aws lightsail push-container-image --region ap-southeast-2 --service-name dostres --label app --image dostres:local
 ```
 
 `push`가 알려 주는 이미지 이름(예: `:dostres.app.1`)을 `deploy/containers.json`에 넣는다. `deploy/containers.example.json`을 복사해 비밀값을 채운다(**`containers.json`은 Git 제외**). 콘솔의 배포 화면에서 환경변수를 직접 넣어도 된다.
 
 ```
-aws lightsail create-container-service-deployment --region ap-northeast-2 --service-name dostres --containers file://deploy/containers.json --public-endpoint file://deploy/public-endpoint.json
-aws lightsail get-container-services --region ap-northeast-2 --service-name dostres
+aws lightsail create-container-service-deployment --region ap-southeast-2 --service-name dostres --containers file://deploy/containers.json --public-endpoint file://deploy/public-endpoint.json
+aws lightsail get-container-services --region ap-southeast-2 --service-name dostres
 ```
 
 `state`가 `RUNNING`이 되면 `url`(https://…amazonlightsail.com)이 서비스 주소다.
@@ -168,4 +174,4 @@ aws lightsail get-container-services --region ap-northeast-2 --service-name dost
 
 - 11/23 제출 버전을 git 태그로 고정하고 심사 기간(11/24~30)에는 기능 변경을 멈춘다.
 - UptimeRobot 등에 `https://…/healthz` 등록(다운 알림).
-- **심사가 끝나면 컨테이너 서비스와 DB를 삭제**한다(`aws lightsail delete-container-service --service-name dostres --region ap-northeast-2`, DB는 콘솔에서 삭제). 비활성화는 요금이 계속 나간다.
+- **심사가 끝나면 컨테이너 서비스와 DB를 삭제**한다(`aws lightsail delete-container-service --service-name dostres --region ap-southeast-2`, DB는 콘솔에서 삭제). 비활성화는 요금이 계속 나간다.
