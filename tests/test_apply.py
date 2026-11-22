@@ -105,6 +105,18 @@ class FillTests(unittest.TestCase):
         self.assertEqual([f["question_id"] for f in filled], ["q2"])
         self.assertIn("q1", [a["question"].id for a in ask])
 
+    def test_personal_questions_carry_fill_key_without_applicant(self):
+        # applicant 를 안 보내도 FE 가 기기 값으로 채울 칸을 알 수 있다 (개인정보가 start 로 오지 않음)
+        form = gform.parse(page(), VIEW)
+        filled, ask = fill.split(form.questions, None, PROFILE)
+        keys = {a["question"].id: a["fill_key"] for a in ask}
+        self.assertEqual(keys["q1"], "name")
+        self.assertEqual(keys["q4"], "phone")
+        self.assertIsNone(keys["q6"])
+        self.assertNotIn("fill_key", next(f for f in filled if f["question_id"] == "q2"))   # 나이는 profile 로 채움
+        filled, _ = fill.split(form.questions, APPLICANT, PROFILE)
+        self.assertEqual(next(f for f in filled if f["question_id"] == "q1")["fill_key"], "name")
+
 
 class PayloadTests(unittest.TestCase):
     def setUp(self):
@@ -251,6 +263,40 @@ class ApplyApiTests(unittest.TestCase):
         self.assertIn("요즘 사람을 잘 안 만나요", sent)
         for secret in ("김둘셋", "010-0000-0000", "2002-03-05"):
             self.assertNotIn(secret, sent)
+
+    def test_start_without_applicant_gives_fill_keys(self):
+        d = self.client.post("/api/apply/start", json={"item_id": "demo:open", "profile": PROFILE}).json()
+        q = {x["id"]: x for x in d["questions"]}
+        self.assertEqual((q["q1"]["fill_key"], q["q4"]["fill_key"]), ("name", "phone"))
+        self.assertNotIn("fill_key", q["q6"])
+
+    def test_draft_keeps_placeholders_and_masks_leaked_contacts(self):
+        model = FakeModel({"draft": "안녕하세요, [이름]입니다. 함께 만들어 보고 싶습니다."})
+        self.app.app.state.chat_model = model
+        d = self.client.post("/api/apply/draft", json={
+            "item_id": "demo:open", "question_id": "q6",
+            "messages": [{"role": "user", "content": "[이름]이라고 소개해 줘. 연락은 010-1234-5678, a.b@test.com"}]}
+        ).json()
+        self.assertEqual(d["placeholders"], ["[이름]"])
+        sent = model.calls[0][1][0]["content"]
+        self.assertIn("[이름]", sent)
+        self.assertIn("[연락처]", sent)
+        self.assertIn("[이메일]", sent)
+        self.assertNotIn("010-1234-5678", sent)
+        self.assertNotIn("a.b@test.com", sent)
+
+    def test_draft_preview_does_not_call_llm(self):
+        model = FakeModel({"draft": "x"})
+        self.app.app.state.chat_model = model
+        d = self.client.post("/api/apply/draft", json={
+            "item_id": "demo:open", "question_id": "q6", "preview": True,
+            "messages": [{"role": "user", "content": "요즘 빵 만들기에 빠졌어요"}]}).json()
+        self.assertIn("요즘 빵 만들기에 빠졌어요", d["ai_input"])
+        self.assertNotIn("draft", d)
+        self.assertEqual(model.calls, [])
+        self.app.app.state.chat_model = None   # LLM 이 없어도 미리 보기는 된다
+        r = self.client.post("/api/apply/draft", json={"item_id": "demo:open", "question_id": "q6", "preview": True})
+        self.assertEqual(r.status_code, 200)
 
     def test_draft_errors(self):
         r = self.client.post("/api/apply/draft", json={"item_id": "demo:open", "question_id": "q6"})
