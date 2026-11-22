@@ -54,6 +54,19 @@ class ChatApiTests(unittest.TestCase):
         self.assertIn('sigungu_cd',context)
         self.assertNotIn('source_content',context)
 
+    def test_finding_new_program_ignores_previous_selection(self):
+        self.use({'replies':['찾아볼게요.'],'intent':'chat'})
+        data=self.post(messages=user('취업 직접 피드백 프로그램 찾아줘'),profile=PROFILE,selected_item_id='program:orang:75646').json()
+        self.assertIsNotNone(data['results'])
+        self.assertEqual(data['results']['type'],'recommend')
+
+    def test_situation_does_not_promote_program_or_application(self):
+        self.use({'replies':['서울청년센터 중구 프로그램이 있어요. 온라인 신청서로 신청해 보세요.'],'intent':'chat'})
+        data=self.post(messages=user('졸업하고 취업 준비 중인데 혼자 하니까 막막해.'),profile=PROFILE).json()
+        self.assertIsNone(data['results'])
+        self.assertNotIn('서울청년센터',' '.join(data['replies']))
+        self.assertNotIn('신청',' '.join(data['replies']))
+
     def test_eligibility_continues_to_selected_application(self):
         self.use({'replies':['공고에는 참여 대상 제한이 없어요.','다른 지원도 찾아볼까요?'],'intent':'chat'})
         data=self.post(messages=user('내가 신청할 수 있어?'),profile=PROFILE,selected_item_id='program:orang:75646').json()

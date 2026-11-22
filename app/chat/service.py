@@ -28,7 +28,7 @@ from app.catalog.repository import known_sigungu_codes, get_item
 
 HISTORY_FOR_LLM = 12          # LLM 에 보내는 최근 메시지 수
 MAX_LLM_BUBBLES = 2         # LLM 말풍선 수 (결과 말풍선은 서버가 따로 붙임)
-MAX_BUBBLE = 650            # 말풍선 하나 최대 글자 수
+MAX_BUBBLE = 320            # 말풍선 하나 최대 글자 수
 SINGLE_CHOICE = ("economy", "participation", "outing", "conversation", "support", "satisfaction", "face_to_face")
 MAX_INTERESTS = QUESTIONS_BY_ID["interests"]["max"]
 
@@ -204,7 +204,8 @@ def respond(session: Session | None, model: ChatModel | None, messages: list[dic
 
     if model is None:
         raise LLMUnavailable("not configured")
-    selected = get_item(session, selected_item_id) if selected_item_id else None
+    new_discovery=bool(re.search(r'추천\s*해|찾아\s*줘|찾아주세요',last)) and not re.search(r'신청|서류|준비물|링크',last)
+    selected = get_item(session, selected_item_id) if selected_item_id and not new_discovery else None
     source_messages = []
     if profile:
         safe_profile={k:profile.get(k) for k in ('age','sigungu_cd','job','school')}
@@ -228,10 +229,10 @@ def respond(session: Session | None, model: ChatModel | None, messages: list[dic
     validate(merged)
     offer = data.get("offer") if data.get("offer") in OFFERS else None
     if selected and intent=="chat":offer=None
-    if not selected and EXPLICIT_RECOMMEND.search(last) and intent not in ("recommend", "search"):
+    if not selected and (EXPLICIT_RECOMMEND.search(last) or new_discovery) and intent not in ("recommend", "search"):
         intent = "recommend"   # "추천해 줘"를 상황 이야기로만 받고 끝내지 않게
     unrequested = not REQUEST.search(last) and (
-        intent in ("recommend", "search") or offer is not None or (profile is None and any(ASKS_PROFILE.search(r) for r in llm_replies)))
+        intent in ("recommend", "search") or offer is not None or (selected is None and any(re.search(r"센터|프로그램|신청|제도",r) for r in llm_replies)) or (profile is None and any(ASKS_PROFILE.search(r) for r in llm_replies)))
     if unrequested:
         # 사용자가 찾아 달라고 하지 않았는데 LLM 이 추천으로 넘어가 나이·사는 곳부터 묻는 경우(점검에서 반복됨):
         # 상황 이야기로 보고, 찾아 주겠다는 제안 버튼으로 바꾼다. 공감 첫 문장만 남기고 묻는 말은 서버 문장으로 바꾼다
@@ -242,7 +243,7 @@ def respond(session: Session | None, model: ChatModel | None, messages: list[dic
         # 남길 첫 문장: 나이·사는 곳을 묻거나 "찾아볼게요"처럼 하지 않을 일을 말하는 문장은 고르지 않는다
         sentences = [s for bubble in llm_replies for s in _SENTENCE.split(bubble) if s]
         first = next((s for s in sentences if not ASKS_PROFILE.search(s) and not REPEATS_RESULT.search(s)
-                      and "?" not in s), "알겠어요.")
+                      and "?" not in s and not re.search(r"센터|프로그램|신청|제도",s)), "혼자 준비하려니 막막할 수 있어요." if re.search(r"취업|자소서|면접",last) else "알겠어요.")
         ask = "사람 만날 때 특히 부담되는 건 어떤 점이에요?" if any(word in last for word in ("모임", "사람", "교류")) else "지금 가장 신경 쓰이는 건 어떤 부분이에요?"
         if re.search(r'자소서|자기소개서|면접',last):
             ask='작성한 글을 직접 봐 주는 방식과 면접 연습 중 어떤 도움이 먼저 필요해요?'
