@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.apply import gform, registry, service
 from app.checkin.summary import CheckinError, validate
+from app.limits import client_key
 from app.recommend.router import Profile, optional_db
 
 router = APIRouter(prefix="/api/apply", tags=["apply"])
@@ -52,7 +53,7 @@ class SubmitRequest(BaseModel):
 
 
 def forms(request: Request) -> dict[str, dict]:
-    return registry.load(request.app.state.settings.apply_forms_path)
+    return registry.from_settings(request.app.state.settings)
 
 
 def _error(status: int, code: str, message: str, **extra) -> JSONResponse:
@@ -72,6 +73,7 @@ def draft(body: DraftRequest, request: Request, session: Session | None = Depend
         validate(body.checkin)
     except CheckinError:
         return _error(422, "VALIDATION_ERROR", "Invalid check-in answers")
+    request.app.state.limiter.hit(client_key(request))   # LLM 사용량 제한 (429 RATE_LIMITED)
     try:
         return service.draft(session, request.app.state.chat_model, forms(request), body.item_id,
                              body.question_id, [m.model_dump() for m in body.messages],

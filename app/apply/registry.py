@@ -11,19 +11,34 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def load(path: str | None) -> dict[str, dict]:
-    if not path:
-        return {}
-    file = Path(path)
-    if not file.exists():
-        logger.warning("apply forms file not found")
-        return {}
-    try:
-        data = json.loads(file.read_text(encoding="utf-8"))
-    except ValueError:
-        logger.warning("apply forms file is not valid JSON")
+def _clean(data) -> dict[str, dict]:
+    if not isinstance(data, dict):
         return {}
     return {k: v for k, v in data.items() if not k.startswith("_") and isinstance(v, dict) and v.get("form_url")}
+
+
+def load(path: str | None, json_text: str = "") -> dict[str, dict]:
+    """파일(APPLY_FORMS_PATH, 로컬) + JSON 문자열(APPLY_FORMS_JSON, 배포 환경변수). 같은 키면 환경변수가 이긴다."""
+    forms: dict[str, dict] = {}
+    if path:
+        file = Path(path)
+        if not file.exists():
+            logger.warning("apply forms file not found")
+        else:
+            try:
+                forms.update(_clean(json.loads(file.read_text(encoding="utf-8"))))
+            except ValueError:
+                logger.warning("apply forms file is not valid JSON")
+    if json_text:
+        try:
+            forms.update(_clean(json.loads(json_text)))
+        except ValueError:
+            logger.warning("APPLY_FORMS_JSON is not valid JSON")
+    return forms
+
+
+def from_settings(settings) -> dict[str, dict]:
+    return load(settings.apply_forms_path, settings.apply_forms_json.get_secret_value())
 
 
 def mark(results: dict | None, forms: dict[str, dict]) -> dict | None:
