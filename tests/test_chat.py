@@ -42,6 +42,70 @@ class ChatApiTests(unittest.TestCase):
     def post(self, **body):
         return self.client.post("/api/chat", json=body)
 
+    def test_selected_program_uses_safe_profile_and_stored_facts(self):
+        model=self.use({'replies':['이력서 첨삭과 면접 준비를 도와줘요.'],'intent':'recommend','offer':'search'})
+        response=self.post(messages=user('여기서는 어떤 도움을 받을 수 있어?'),profile=PROFILE,selected_item_id='program:orang:75646')
+        data=response.json()
+        self.assertEqual(response.status_code,200)
+        self.assertIsNone(data['results'])
+        self.assertEqual(data['choices'],[])
+        context=' '.join(m['content'] for m in model.calls[0] if m['role']=='system')
+        self.assertIn('서울청년센터 중구',context)
+        self.assertIn('sigungu_cd',context)
+        self.assertNotIn('source_content',context)
+
+    def test_finding_new_program_ignores_previous_selection(self):
+        self.use({'replies':['찾아볼게요.'],'intent':'chat'})
+        data=self.post(messages=user('취업 직접 피드백 프로그램 찾아줘'),profile=PROFILE,selected_item_id='program:orang:75646').json()
+        self.assertIsNotNone(data['results'])
+        self.assertEqual(data['results']['type'],'recommend')
+
+    def test_situation_does_not_promote_program_or_application(self):
+        self.use({'replies':['서울청년센터 중구 프로그램이 있어요. 온라인 신청서로 신청해 보세요.'],'intent':'chat'})
+        data=self.post(messages=user('졸업하고 취업 준비 중인데 혼자 하니까 막막해.'),profile=PROFILE).json()
+        self.assertIsNone(data['results'])
+        self.assertNotIn('서울청년센터',' '.join(data['replies']))
+        self.assertNotIn('신청',' '.join(data['replies']))
+
+    def test_eligibility_continues_to_selected_application(self):
+        self.use({'replies':['공고에는 참여 대상 제한이 없어요.','다른 지원도 찾아볼까요?'],'intent':'chat'})
+        data=self.post(messages=user('내가 신청할 수 있어?'),profile=PROFILE,selected_item_id='program:orang:75646').json()
+        self.assertIn('신청 내용을 같이 준비',data['replies'][-1])
+        self.assertIn('신청할 수 있어요',data['replies'][0])
+        self.assertNotIn('다른 지원',' '.join(data['replies']))
+        self.assertEqual(data['choices'][0]['text'],'신청할래')
+
+    def test_policy_eligibility_states_missing_conditions_or_age_failure(self):
+        self.use({'replies':['unused'],'intent':'chat'})
+        item='policy:20260710005400113256'
+        data=self.post(messages=user('내가 신청할 수 있어?'),profile=PROFILE,selected_item_id=item).json()
+        self.assertIn('추가 확인',data['replies'][0])
+        young=self.post(messages=user('내가 신청할 수 있어?'),profile={**PROFILE,'age':10},selected_item_id=item).json()
+        self.assertIn('신청하기 어려워요',young['replies'][0])
+        self.assertEqual(young['choices'],[])
+
+    def test_money_concern_offers_recommendation_without_reasking(self):
+        model=self.use({'replies':['unused'],'intent':'chat'})
+        for text in ['생활비','돈이 없어 돈이 없다고','돈이 부족해']:
+            data=self.post(messages=user(text),profile=PROFILE).json()
+            self.assertIn('찾아드릴까요',data['replies'][0])
+            self.assertNotIn('어떤 부분',' '.join(data['replies']))
+            self.assertIsNone(data['results'])
+            self.assertIn('정책',data['choices'][0]['text'])
+        self.assertEqual(model.calls,[])
+
+    def test_accepting_living_cost_offer_starts_recommendation(self):
+        self.use({'replies':['찾아볼게요.'],'intent':'chat'})
+        data=self.post(messages=[{'role':'assistant','content':'생활비 부담을 덜 수 있는 지원을 찾아드릴까요?'},{'role':'user','content':'응'}],profile=PROFILE).json()
+        self.assertIsNotNone(data['results'])
+
+    def test_inquiry_script_is_not_a_call_and_offers_schedule(self):
+        self.use({'replies':['unused'],'intent':'chat'})
+        data=self.post(messages=user('자기소개서를 미리 써 가야 하는지 물어볼 말 정리해줘'),selected_item_id='program:orang:75646').json()
+        self.assertIn('전화는 대신 걸 수 없지만',data['replies'][0])
+        self.assertIn('서울청년센터 중구',data['replies'][1])
+        self.assertEqual(data['choices'][0]['text'],'문의 일정 등록')
+
     def test_crisis_answers_with_resources_without_llm(self):
         for text in ("자살 관련 지원받고 싶어요", "요즘 그냥 죽고 싶다는 생각이 들어", "다 끝내고 싶어"):
             response = self.post(messages=user(text))   # LLM 이 없어도 동작
@@ -129,10 +193,11 @@ class ChatApiTests(unittest.TestCase):
         self.use({"replies": ["그랬군요.", "원하면 제가 맞는 지원을 찾아볼까요?"], "intent": "share_state",
                   "checkin": {"economy": "high"}, "offer": "recommend", "next_question": "outing"})
         data = self.post(messages=user("돈이 너무 부족해요")).json()
-        self.assertEqual(data["choices"], [{"type": "message", "label": "맞춤 추천 받기", "text": "나한테 맞는 지원 추천해 줘"}])
+        self.assertIn("찾아드릴까요",data["replies"][0])
+        self.assertEqual(data["choices"][0]["label"],"맞는 지원 찾아보기")
         self.use({"replies": ["원하면 찾아볼까요?"], "intent": "share_state", "interests": ["집·주거"], "offer": "search"})
         data = self.post(messages=user("집 문제가 걱정이에요")).json()
-        self.assertEqual([c["label"] for c in data["choices"]], ["집·주거 지원 찾기"])
+        self.assertEqual(data["choices"], [])
 
     def test_unrequested_recommend_becomes_offer(self):
         # 상황만 말했는데 LLM 이 추천으로 넘어가 나이·사는 곳을 묻는 경우 → 상황 이야기 + 제안 버튼
@@ -143,14 +208,14 @@ class ChatApiTests(unittest.TestCase):
         self.assertEqual(data["needs"], [])
         self.assertEqual(data["replies"][0], "막막할 때가 있죠.")
         self.assertNotIn("나이", " ".join(data["replies"]))
-        self.assertEqual([c["label"] for c in data["choices"]], ["맞춤 추천 받기"])
+        self.assertEqual(data["choices"], [])
         self.assertEqual(data["checkin"]["economy"], "high")   # 알아들은 답은 그대로
 
     def test_drops_reasked_question_and_repeated_result(self):
         self.use({"replies": ["밖에 거의 안 나간다니 답답하겠어요. 요즘 필요한 일 외에도 밖에 나가는 편인가요?"],
                   "intent": "share_state", "checkin": {"outing": "high"}})
         data = self.post(messages=user("요즘 집 밖에 거의 안 나가요")).json()
-        self.assertEqual(data["replies"], ["밖에 거의 안 나간다니 답답하겠어요.", "원하면 지금까지 이야기로 맞는 지원을 제가 찾아볼까요?"])   # 질문이 빠져 제안이 붙음
+        self.assertEqual(data["replies"], ["밖에 거의 안 나간다니 답답하겠어요.", "어떤 도움이 있으면 좋을지 조금 더 이야기해 줄래요?"])   # 질문이 빠져 제안이 붙음
         self.use({"replies": ["월세 지원 관련 정보를 찾아봤어요."], "intent": "search", "search_keywords": ["월세"]})
         data = self.post(messages=user("월세 지원 있어요?"), profile=PROFILE).json()
         self.assertEqual(len(data["replies"]), 2)
@@ -170,13 +235,13 @@ class ChatApiTests(unittest.TestCase):
         self.use({"replies": ["주거 지원을 찾으려면 나이와 사는 곳을 알려 주세요.", "찾아볼게요."], "intent": "search",
                   "interests": ["집·주거"]})
         data = self.post(messages=user("집 문제가 걱정이에요")).json()
-        self.assertEqual(data["replies"], ["알겠어요.", "원하면 집·주거 지원을 제가 찾아볼까요?"])
+        self.assertEqual(data["replies"], ["알겠어요.", "지금 가장 신경 쓰이는 건 어떤 부분이에요?"])
         # 4) 방금 알아들은 문항을 말을 바꿔 다시 묻는 문장은 뺌 (다른 질문은 남김)
         self.use({"replies": ["힘들겠어요. 생활비 부담은 어느 정도인가요?"], "intent": "share_state",
                   "checkin": {"economy": "high"}})
-        self.assertEqual(self.post(messages=user("돈이 없어요")).json()["replies"], ["힘들겠어요.", "원하면 지금까지 이야기로 맞는 지원을 제가 찾아볼까요?"])
+        self.assertIn("찾아드릴까요",self.post(messages=user("돈이 없어요")).json()["replies"][0])
         self.use({"replies": ["그렇군요. 사람 만나는 건 부담돼요?"], "intent": "share_state", "checkin": {"economy": "high"}})
-        self.assertIn("사람 만나는 건 부담돼요?", self.post(messages=user("돈이 없어요")).json()["replies"][0])
+        self.assertIn("찾아드릴까요", self.post(messages=user("돈이 없어요")).json()["replies"][0])
         # 5) 검색은 첫 검색어(핵심)가 들어간 항목만 → 관련 없는 결과 대신 0건
         self.use({"replies": ["찾아볼게요."], "intent": "search", "search_keywords": ["우주비행사", "훈련"]})
         data = self.post(messages=user("우주비행사 훈련 지원 있어요?"), profile=PROFILE).json()
@@ -186,8 +251,8 @@ class ChatApiTests(unittest.TestCase):
     def test_dead_end_gets_offer_except_closing_or_after_crisis(self):
         self.use({"replies": ["그건 아직 제가 못 해요."], "intent": "chat"})
         data = self.post(messages=user("내년 공고 나오면 알려 줘요")).json()
-        self.assertEqual(data["replies"], ["그건 아직 제가 못 해요.", "원하면 지금까지 이야기로 맞는 지원을 제가 찾아볼까요?"])
-        self.assertEqual([c["label"] for c in data["choices"]], ["맞춤 추천 받기"])
+        self.assertEqual(data["replies"], ["그건 아직 제가 못 해요.", "어떤 도움이 있으면 좋을지 조금 더 이야기해 줄래요?"])
+        self.assertEqual(data["choices"], [])
         self.use({"replies": ["네, 언제든 불러 주세요!"], "intent": "chat"})
         self.assertEqual(self.post(messages=user("고마워요 여기까지 할게요")).json()["choices"], [])
         after_crisis = [{"role": "user", "content": "다 끝내고 싶어요"}, {"role": "assistant", "content": "… 109 …"},

@@ -82,6 +82,8 @@ def to_item(points: float, why: list[str], row: dict, sigungu_cd: str, today: da
             "apply_urls": p.get("apply_urls") or "",
             "evergreen": bool(p.get("evergreen")),   # 오래된 상시 글: '이용 전 센터에 확인' 표시
         })
+    from app.catalog.program_facts import presentation
+    item.update(presentation(row))
     item.update(presentation_fields(row, today))
     item['apply_period'] = item['application_period']
     return item

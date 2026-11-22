@@ -28,6 +28,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    selected_item_id: str | None = Field(None, max_length=200)
     messages: list[ChatMessage] = Field(..., min_length=1, max_length=40, description="지금까지 대화. 마지막은 user")
     profile: Profile | None = Field(None, description="기본 정보. 없으면 추천·검색 대신 needs=['profile']")
     checkin: dict[str, Any] = Field(default_factory=dict, description="지금까지 확인된 상태 체크 답")
@@ -41,7 +42,7 @@ def chat(body: ChatRequest, request: Request, session: Session | None = Depends(
         request.app.state.limiter.hit(client_key(request))
     try:
         data = respond(session, request.app.state.chat_model, [m.model_dump() for m in body.messages],
-                       body.profile.model_dump() if body.profile else None, body.checkin)
+                       body.profile.model_dump() if body.profile else None, body.checkin, selected_item_id=body.selected_item_id)
         apply_registry.mark(data.get("results"), apply_registry.from_settings(request.app.state.settings))
         return data
     except CheckinError as exc:

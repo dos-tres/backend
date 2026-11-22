@@ -30,7 +30,7 @@ class ShortLinkTest(unittest.TestCase):
         # naver.me → 지도처럼 신청폼이 아닌 곳이면 신청폼으로 치지 않는다 (링크 앞 2개로 대체)
         links = merge.ShortLinks(fetch=lambda u: "https://map.naver.com/p/1")
         row = merge.from_orang(orang_row(["https://naver.me/abc"]), links)
-        self.assertEqual(row["apply_urls"], "https://map.naver.com/p/1")
+        self.assertEqual(row["apply_urls"], "")
         self.assertFalse(merge.is_form("https://map.naver.com/p/1"))
 
     def test_unresolved_short_link_stays_as_form_candidate(self):

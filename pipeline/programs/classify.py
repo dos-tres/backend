@@ -176,7 +176,7 @@ def newest_per_title(rows):
 
 
 def content_hash(r):
-    return hashlib.sha1((r["title"] + "|" + r["summary"]).encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha1((r["title"] + "|" + (r.get("source_content") or r["summary"])).encode("utf-8")).hexdigest()[:12]
 
 
 def program_input(r):
@@ -186,7 +186,7 @@ def program_input(r):
         "category": r["category"],
         "center": r["center_names"][:60],
         "target": " ".join(r["target"].split())[:100],
-        "summary": " ".join(r["summary"].split())[:300],
+        "summary": " ".join((r.get("source_content") or r["summary"]).split()),
     }
 
 
@@ -264,13 +264,21 @@ def write_outputs(rows, cache):
                 "status": r["status"],
                 "aply_start": r["aply_start"][:10], "aply_end": r["aply_end"][:10], "aply_text": r["aply_text"],
                 "prog_start": r["prog_start"][:10], "prog_end": r["prog_end"][:10], "prog_text": r["prog_text"],
-                "place": r["place"], "target": r["target"], "summary": r["summary"],
+                "place": r["place"], "target": r["target"], "summary": r["summary"], "source_content":r.get("source_content", ""),
                 "url": r["url"], "apply_urls": r["apply_urls"], "image_url": r["image_url"],
                 "source_name": r["source_name"],
                 "evergreen": bool(r.get("_evergreen")),   # 오래된 상시 글: '이용 전 센터에 확인' 표시
                 "i5_domains": e["i5_domains"], "access_type": e["access_type"],
                 "topics": e["topics"], "situations": e["situations"],
             })
+    from app.catalog.program_facts import saved, VERSION
+    for item in items:
+        record=saved('program:'+item['program_id'])
+        if record.get('facts'):
+            item['facts']=record['facts']
+            item['facts_source_hash']=record['source_hash']
+            item['facts_version']=VERSION
+            item['verified_apply_urls']=record.get('apply_urls',[])
     data = {
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "source": "청년센터 프로그램 (pipeline/programs/crawl) + pipeline/programs/classify.py 분류",

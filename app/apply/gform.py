@@ -64,6 +64,7 @@ class Question:
     kind: str                # short / long / choice / multi / date / agree
     required: bool
     options: list[str] = field(default_factory=list)
+    rows: list[dict] = field(default_factory=list)
     other: bool = False      # 선택지에 '기타(직접 입력)'가 있다
     hint: str | None = None  # 작성 안내 (폼의 설명·검증 안내)
 
@@ -85,7 +86,7 @@ def _closed_message(page: str) -> str | None:
     return texts[1] if len(texts) > 1 else None
 
 
-def parse(page: str, final_url: str) -> Form:
+def parse(page: str, final_url: str, *, read_only: bool = False) -> Form:
     if "accounts.google.com" in final_url:
         raise FormNotSupported("login required")
     if "/closedform" in final_url:
@@ -111,11 +112,31 @@ def parse(page: str, final_url: str) -> Form:
             raise FormUnreachable("unexpected item") from exc
         if typ in DISPLAY_ONLY:
             continue
+        if typ == PAGE_BREAK and read_only:
+            continue
         if typ == PAGE_BREAK:
             raise FormNotSupported("multiple pages")
-        if typ not in KINDS:
+        if typ not in KINDS and typ != 7:
             raise FormNotSupported(f"question type {typ}")
         entries = item[4] or []
+        if typ == 7:
+            if not entries or not all(len(e)>11 and e[11] == [1] for e in entries):
+                raise FormNotSupported("radio grid")
+            question_id = f"q{len(questions)+1}"
+            try:
+                options = [o[0] for o in entries[0][1] if o and o[0]]
+                if any([o[0] for o in e[1] if o and o[0]] != options for e in entries):
+                    raise FormNotSupported("different grid columns")
+                rows = [{"id":f"{question_id}r{n+1}", "label":e[3][0],
+                         "entry":int(e[0]), "required":bool(e[2])} for n,e in enumerate(entries)]
+            except (IndexError, TypeError, ValueError) as exc:
+                raise FormUnreachable("unexpected grid") from exc
+            questions.append(Question(
+                id=question_id, entry=int(entries[0][0]), label=label, description=desc,
+                kind="multi_grid", required=any(row["required"] for row in rows),
+                options=options, rows=rows,
+            ))
+            continue
         if len(entries) != 1:
             raise FormNotSupported("grid question")
         entry = entries[0]
@@ -141,7 +162,7 @@ def parse(page: str, final_url: str) -> Form:
                 fbzx=fbzx.group(1) if fbzx else None, hidden=hidden)
 
 
-def fetch(url: str, http=requests) -> Form:
+def fetch(url: str, http=requests, *, read_only: bool = False) -> Form:
     try:
         res = http.get(url, headers={"User-Agent": UA}, timeout=TIMEOUT, allow_redirects=True)
     except requests.RequestException as exc:
@@ -149,7 +170,7 @@ def fetch(url: str, http=requests) -> Form:
         raise FormUnreachable(type(exc).__name__) from exc
     if res.status_code != 200:
         raise FormUnreachable(f"HTTP {res.status_code}")
-    return parse(res.text, res.url)
+    return parse(res.text, res.url, read_only=read_only)
 
 
 class InvalidAnswers(ValueError):
@@ -163,6 +184,15 @@ def build_payload(form: Form, answers: dict[str, str | list[str]]) -> list[tuple
     payload: list[tuple[str, str]] = []
     missing, invalid = [], []
     for q in form.questions:
+        if q.kind == "multi_grid":
+            for row in q.rows:
+                value = answers.get(row["id"], [])
+                values = value if isinstance(value, list) else [value]
+                values = [v.strip() for v in values if isinstance(v,str) and v.strip()]
+                if not values and row["required"]: missing.append(row["id"])
+                if any(v not in q.options for v in values): invalid.append(row["id"])
+                payload.extend((f"entry.{row['entry']}",v) for v in values if v in q.options)
+            continue
         value = answers.get(q.id)
         values = [v.strip() for v in (value if isinstance(value, list) else [value]) if isinstance(v, str) and v.strip()]
         if not values:
@@ -207,7 +237,9 @@ def submit(form: Form, answers: dict[str, str | list[str]], http=requests) -> No
     if form.fbzx and "fbzx" not in sent:
         payload.append(("fbzx", form.fbzx))
     for q in form.questions:   # 선택 문항 표시값 (브라우저와 같게)
-        if q.kind in ("choice", "agree", "multi"):
+        if q.kind == "multi_grid":
+            payload.extend((f"entry.{row['entry']}_sentinel", "") for row in q.rows)
+        elif q.kind in ("choice", "agree", "multi"):
             payload.append((f"entry.{q.entry}_sentinel", ""))
     try:
         res = http.post(form.submit_url, data=payload, headers={"User-Agent": UA}, timeout=TIMEOUT)
@@ -221,3 +253,8 @@ def submit(form: Form, answers: dict[str, str | list[str]], http=requests) -> No
         # 접수 완료 화면('다른 응답 제출', usp=form_confirm)이 아니라 입력 폼이 다시 나왔다 = 기록되지 않음
         logger.warning("form submit returned the form again")
         raise SubmitFailed("form returned again")
+
+
+def fetch_source(url: str) -> Form:
+    """공개 원본을 읽기만 한다. 여러 페이지를 제출 대상으로 사용하지 않는다."""
+    return fetch(url, read_only=True)
