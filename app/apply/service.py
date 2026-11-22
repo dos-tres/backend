@@ -72,6 +72,10 @@ def _question_json(q: gform.Question, prefill: str | None, can_draft: bool, fill
            "prompt": fill.prompt_for(q, prefill, can_draft)}
     if fill_key:
         out["fill_key"] = fill_key   # FE 가 기기에 둔 값으로 채우고 확인만 받는다. 값이 없으면 prompt 로 묻는다
+    if q.description:
+        out["description"] = q.description
+    if q.rows:
+        out["rows"] = [{k:v for k,v in row.items() if k != "entry"} for row in q.rows]
     if q.options:
         out["options"] = q.options
     if q.other:
@@ -85,6 +89,16 @@ def _question_json(q: gform.Question, prefill: str | None, can_draft: bool, fill
     if can_draft:
         out["can_draft"] = True
     return out
+
+
+def _fetch_source(entry, fetch):
+    return gform.fetch_source(entry["form_url"]) if entry.get("submission_form_url") and fetch is gform.fetch else fetch(entry["form_url"])
+
+
+def question_contract(form):
+    norm=lambda text:" ".join((text or "").split())
+    return [{"label":norm(q.label),"description":norm(q.description),"kind":q.kind,"required":q.required,"options":q.options,"other":q.other,
+             "rows":[{"label":r["label"],"required":r["required"]} for r in q.rows]} for q in form.questions]
 
 
 class FormChanged(Exception):
@@ -107,7 +121,7 @@ def start(session: Session | None, forms: dict[str, dict], item_id: str, applica
                 "replies": ["이건 조이가 대신 제출할 수 없어서, 공식 페이지에서 신청해야 해요."],
                 "choices": []}
     try:
-        form = fetch(entry["form_url"])
+        form = _fetch_source(entry, fetch)
     except gform.FormClosed as exc:
         info = _item_info(session, item_id, None)
         info["title"] = entry.get("title") or info["title"]
@@ -138,6 +152,7 @@ def start(session: Session | None, forms: dict[str, dict], item_id: str, applica
                              for f in filled)
         replies.append(f"알고 있는 정보로 채웠어요. {summary}")
     return {"channel": "form", "test_only":bool(entry.get("test_only")), "available": True, "form_revision":form_revision(form),
+            "source_form_url": entry["form_url"], "replica": bool(entry.get("submission_form_url")), "submission_ready":entry.get("submission_enabled",True),
             "item": {"id": item_id, "title": info["title"]},
             "filled": filled,
             "questions": [_question_json(a["question"], a["prefill"], a["can_draft"], a["fill_key"]) for a in ask],
@@ -155,15 +170,32 @@ def submit(session: Session | None, forms: dict[str, dict], item_id: str, answer
     entry = forms.get(item_id)
     if entry is None:
         raise NotAvailable(item_id)
-    form = fetch(entry["form_url"])          # 마감·형식 변경이면 FormError
+    form = _fetch_source(entry, fetch)          # 마감·형식 변경이면 FormError
     if expected_revision and expected_revision != form_revision(form):
         raise FormChanged()
+    if entry.get("submission_form_url"):
+        if entry.get("submission_enabled") is False:
+            raise NotAvailable(item_id)
+        if not entry.get("test_only") or entry["submission_form_url"] == entry["form_url"]:
+            raise NotAvailable(item_id)
+        invalid=[]
+        for q in form.questions:
+            value=str(answers.get(q.id,""))
+            if re.search(r"이름|성명",q.label) and not value.startswith("가상"): invalid.append(q.id)
+            if re.search(r"연락처|휴대폰|전화",q.label) and re.sub(r"\D","",value)!="01000000000": invalid.append(q.id)
+        if invalid: raise gform.InvalidAnswers([],invalid)
+        target = fetch(entry["submission_form_url"])
+        if target.submit_url == form.submit_url:
+            raise NotAvailable(item_id)
+        if question_contract(form) != question_contract(target):
+            raise FormChanged()
+        form = target
     if post is None:
         gform.submit(form, answers)          # InvalidAnswers / SubmitFailed
     else:
         gform.submit(form, answers, http=post)
     info = _item_info(session, item_id, form)
-    return {"status": "submitted", "confirmed_by": "server",
+    return {"status": "simulated" if entry.get("submission_form_url") else "submitted", "confirmed_by": "server",
             "submitted_at": datetime.now(KST).isoformat(timespec="seconds"),
             "item": {"id": item_id, "title": info["title"]},
             "replies": ["신청 완료됐어요!", "접수는 선정이나 참여 확정과 달라요. 신청 기록과 일정을 남길 수 있어요."],
@@ -183,7 +215,7 @@ def draft(session: Session | None, model: ChatModel | None, forms: dict[str, dic
     entry = forms.get(item_id)
     if entry is None:
         raise NotAvailable(item_id)
-    form = fetch(entry["form_url"])
+    form = _fetch_source(entry, fetch)
     q = next((q for q in form.questions if q.id == question_id), None)
     if q is None or q.kind != "long":
         raise NotAvailable(question_id)
