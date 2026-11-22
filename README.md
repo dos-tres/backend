@@ -79,7 +79,7 @@ FastAPI 실행 기반을 구현했습니다. GET /healthz, Swagger UI(/docs), �
 | --- | --- |
 | `YOUTH_POLICY_API_KEY` | 1 정책 수집 (온통청년 청년정책 API) |
 | `YOUTH_CENTER_API_KEY` | 3 센터 목록 (온통청년 청년공간 API) |
-| `GMS_KEY`(또는 `OPENAI_API_KEY`). 선택: `OPENAI_BASE_URL`(비우면 GMS 주소), `LLM_MODEL`(비우면 gpt-4.1-mini) | 2·7 분류 |
+| `OPENAI_API_KEY`. 선택: `OPENAI_BASE_URL`(비우면 https://api.openai.com/v1), `LLM_MODEL`(비우면 gpt-4.1-mini) | 2·7 분류 |
 | `DATABASE_URL` | 8 DB 적재 (앱과 같은 설정) |
 
 운영에서 지켜지는 것 (구현 완료):

@@ -8,7 +8,7 @@ FE 동작 (docs/CHAT.md 5장, docs/CHAT_SCENARIOS.md 1장):
 - 버튼: answer → checkin[question_id]=code 로 넣고 label 을 사용자 말로 보낸다. message → text 를 사용자 말로 보낸다.
 - needs=["profile"] → 입력 칸에서 기본 정보를 받은 뒤, 방금 보낸 사용자 말을 기본 정보와 함께 다시 보낸다.
 
-.env 의 GMS_KEY 가 필요하고 LLM 호출 비용이 든다(약 70회). 시나리오 목록과 결과 정리: docs/CHAT_SCENARIOS.md
+.env 의 OPENAI_API_KEY 가 필요하고 LLM 호출 비용이 든다(약 70회). 시나리오 목록과 결과 정리: docs/CHAT_SCENARIOS.md
 """
 import argparse
 import os

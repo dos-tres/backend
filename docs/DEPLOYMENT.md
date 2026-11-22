@@ -10,7 +10,7 @@
 - frontend: React + TypeScript + Vite. 예시 데이터와 예시 대화 응답으로 동작한다.
 - frontend: GitHub Actions에 npm ci 및 npm run build 검증이 있다.
 - backend: Python + FastAPI 및 AI 에이전트를 같은 저장소에서 개발하기로 결정했다. FastAPI 실행 기반, healthz, 환경 설정, CORS, 공통 오류 응답과 자동 테스트를 구현하고 로컬 실행을 검증했다.
-- 기본 DB는 PostgreSQL 17이다. SQLAlchemy 연결·요청별 세션, Alembic, /readyz를 구현했다. 정책·프로그램 카탈로그 테이블 `catalog_items`(0002), 변경 이력 `catalog_item_changes`(0003)와 추천 API를 구현했다(배포 전). 매일 수집 스케줄러 실행 위치는 배포 환경과 함께 정한다. AI 비서 대화 `POST /api/chat`을 구현했다(`feat/ai-chat`, 배포 전). 개발은 파이프라인 분류와 같은 OpenAI 호환 GMS(gpt-4.1-mini)를 쓴다. 배포 제공업체, 인증, 운영 AI 제공업체·모델은 미정이다.
+- 기본 DB는 PostgreSQL 17이다. SQLAlchemy 연결·요청별 세션, Alembic, /readyz를 구현했다. 정책·프로그램 카탈로그 테이블 `catalog_items`(0002), 변경 이력 `catalog_item_changes`(0003)와 추천 API를 구현했다(배포 전). 매일 수집 스케줄러 실행 위치는 배포 환경과 함께 정한다. AI 비서 대화 `POST /api/chat`을 구현했다(`feat/ai-chat`, 배포 전). 파이프라인 분류와 대화 모두 OpenAI(gpt-4.1-mini)를 쓴다(2026-11-22, SSAFY GMS 종료로 전환). 인증은 미정이다.
 
 이 문서는 개발 기준이다. 배포 설정이나 실제 AI 연동이 구현됐다는 뜻은 아니다.
 
@@ -43,7 +43,7 @@ APP_ENV, ALLOWED_ORIGINS, DATABASE_URL은 현재 backend가 읽는다. 나머지
 | frontend | VITE_API_BASE_URL | 공개 가능한 backend 주소; frontend 공통 API 모듈 연결은 후속 작업 |
 | backend | APP_ENV | local / staging / production 구분; 구현 완료 |
 | backend | ALLOWED_ORIGINS | 허용할 frontend origin의 JSON 문자열 배열; 구현 완료 |
-| backend | GMS_KEY(또는 OPENAI_API_KEY), OPENAI_BASE_URL, LLM_MODEL | OpenAI 호환 LLM 키·주소·모델. 서버 비밀 설정에서만 주입. 파이프라인 분류와 /api/chat이 함께 사용; 구현 완료(키가 없으면 /api/chat 503) |
+| backend | OPENAI_API_KEY(예전 GMS_KEY), OPENAI_BASE_URL, LLM_MODEL | OpenAI 호환 LLM 키·주소·모델. 서버 비밀 설정에서만 주입. 파이프라인 분류와 /api/chat이 함께 사용; 구현 완료(키가 없으면 /api/chat 503) |
 | backend | 다른 제공업체(AI_PROVIDER 등) | OpenAI 호환이 아닌 제공업체를 쓸 때; 미구현 |
 | backend | DATABASE_URL | 서버 전용 PostgreSQL psycopg 연결 URL; 구현 완료 |
 
