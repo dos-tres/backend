@@ -199,63 +199,30 @@ class ApplyApiTests(unittest.TestCase):
         self.assertIn("예산 소진", d["replies"][1])
         self.assertEqual([c["label"] for c in d["choices"]], ["비슷한 지원 찾기", "다른 추천 보기"])
 
-    def test_start_not_in_registry(self):
+    def test_unregistered_catalog_form_is_read_only(self):
         d = self.client.post("/api/apply/start", json={"item_id": "program:orang:75755"}).json()
-        self.assertFalse(d["available"])
-        self.assertEqual(d["reason"], "not_supported")
-        self.get.assert_not_called()
+        self.assertTrue(d["available"])
+        self.assertTrue(d["read_only"])
+        self.assertFalse(d["submission_ready"])
+        self.get.assert_called_once()
 
     def test_start_unreachable(self):
         self.get.side_effect = requests.ConnectionError()
         d = self.client.post("/api/apply/start", json={"item_id": "demo:open"}).json()
         self.assertEqual(d["reason"], "unreachable")
 
-    def test_submit_success(self):
-        r = self.client.post("/api/apply/submit", json={"item_id": "demo:open", "applicant": APPLICANT,
-                                                        "answers": FULL})
-        self.assertEqual(r.status_code, 200)
-        d = r.json()
-        self.assertEqual((d["status"], d["confirmed_by"]), ("submitted", "server"))
-        self.post.assert_called_once()
-        url = self.post.call_args.args[0]
-        data = self.post.call_args.kwargs["data"]
-        self.assertTrue(url.endswith("/formResponse"))
-        self.assertIn(("entry.105", "관악구 신림동"), data)
-        self.assertIn(("fbzx", "-123"), data)
-        self.assertIn(("partialResponse", '[null,null,"-123"]'), data)   # 숨은 값도 같이 (빠지면 기록 안 됨)
-        self.assertIn(("entry.109_sentinel", ""), data)
-        self.assertEqual(sum(1 for d in data if d[0] == "entry.103_sentinel"), 1)
-
-    def test_submit_invalid_does_not_post(self):
-        r = self.client.post("/api/apply/submit", json={"item_id": "demo:open", "answers": {"q1": "김둘셋"}})
-        self.assertEqual(r.status_code, 422)
-        self.assertEqual(r.json()["error"]["code"], "APPLY_INVALID")
-        self.assertIn("q8", r.json()["error"]["missing"])
+    def test_non_replica_submission_is_blocked_even_with_complete_answers(self):
+        for item_id, answers in [("demo:open", FULL), ("demo:open", {}), ("program:x", FULL)]:
+            r=self.client.post("/api/apply/submit",json={"item_id":item_id,"answers":answers})
+            self.assertEqual((r.status_code,r.json()["error"]["code"]),(404,"APPLY_NOT_AVAILABLE"))
         self.post.assert_not_called()
 
-    def test_submit_form_shown_again_is_failure(self):
-        # 구글이 200 을 주더라도 폼이 다시 나오면 기록되지 않은 것이다
-        self.post.return_value = response(page(), VIEW, 200)
-        r = self.client.post("/api/apply/submit", json={"item_id": "demo:open", "answers": FULL})
-        self.assertEqual((r.status_code, r.json()["error"]["code"]), (502, "APPLY_SUBMIT_FAILED"))
-
-    def test_changed_form_stops_before_external_submit(self):
-        self.get.return_value=response(page(),VIEW)
-        revision=self.client.post('/api/apply/start',json={'item_id':'demo:open'}).json()['form_revision']
-        self.get.return_value=response(page(title='변경된 신청서'),VIEW)
-        r=self.client.post('/api/apply/submit',json={'item_id':'demo:open','answers':FULL,'form_revision':revision})
-        self.assertEqual((r.status_code,r.json()['error']['code']),(409,'APPLY_FORM_CHANGED'))
-        self.post.assert_not_called()
-
-    def test_submit_failures(self):
-        self.post.return_value = response("err", VIEW, 400)
-        r = self.client.post("/api/apply/submit", json={"item_id": "demo:open", "answers": FULL})
-        self.assertEqual((r.status_code, r.json()["error"]["code"]), (502, "APPLY_SUBMIT_FAILED"))
-        self.get.return_value = response(CLOSED_PAGE, CLOSED)
-        r = self.client.post("/api/apply/submit", json={"item_id": "demo:open", "answers": FULL})
-        self.assertEqual((r.status_code, r.json()["error"]["code"]), (409, "APPLY_FORM_CLOSED"))
-        r = self.client.post("/api/apply/submit", json={"item_id": "program:x", "answers": FULL})
-        self.assertEqual(r.status_code, 404)
+    def test_non_replica_is_readable_but_not_submittable(self):
+        data=self.client.post("/api/apply/start",json={"item_id":"demo:open"}).json()
+        self.assertTrue(data["available"])
+        self.assertTrue(data["read_only"])
+        self.assertFalse(data["submission_ready"])
+        self.assertTrue(data["questions"])
 
     def test_draft_uses_llm_without_personal_info(self):
         model = FakeModel({"draft": "베이킹을 통해 사람들과 함께 무언가를 만들어 보고 싶습니다."})

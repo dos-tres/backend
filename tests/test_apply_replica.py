@@ -13,7 +13,7 @@ class ReplicaTests(unittest.TestCase):
         self.target=copy.deepcopy(self.source)
         self.target.submit_url='https://docs.google.com/forms/d/e/replica-form/formResponse'
         for q in self.target.questions:q.entry+=1000
-        self.forms={'demo:replica':{'form_url':VIEW,'submission_form_url':TARGET,'test_only':True}}
+        self.forms={'demo:replica':{'form_url':VIEW,'submission_form_url':TARGET,'test_only':True,'submission_enabled':True}}
         self.fetch=Mock(side_effect=lambda url:self.source if url==VIEW else self.target)
         self.post=Mock();self.post.post.return_value=response('ok',self.target.submit_url)
         self.answers={'q1':'가상수아','q2':'23','q3':'여','q4':'010-0000-0000','q5':'서울 강동구 천호동','q6':'자기소개서 피드백을 받고 싶습니다.','q8':'동의합니다.'}
@@ -48,5 +48,18 @@ class ReplicaTests(unittest.TestCase):
         self.assertEqual(result['source_form_url'],VIEW)
         self.assertEqual(result['questions'][0]['label'],self.source.questions[0].label)
         self.assertNotIn('entry',result['questions'][0])
+
+    def test_disabled_replica_never_fetches_or_posts(self):
+        self.forms['demo:replica']['submission_enabled']=False
+        with self.assertRaises(service.NotAvailable):service.submit(None,self.forms,'demo:replica',self.answers,fetch=self.fetch,post=self.post)
+        self.fetch.assert_not_called();self.post.post.assert_not_called()
+    def test_source_revision_change_and_missing_answer_never_post(self):
+        with self.assertRaises(service.FormChanged):service.submit(None,self.forms,'demo:replica',self.answers,fetch=self.fetch,post=self.post,expected_revision='0'*64)
+        del self.answers['q8']
+        with self.assertRaises(gform.InvalidAnswers):service.submit(None,self.forms,'demo:replica',self.answers,fetch=self.fetch,post=self.post)
+        self.post.post.assert_not_called()
+    def test_provider_failure_is_not_success(self):
+        self.post.post.return_value=response(page(),TARGET)
+        with self.assertRaises(gform.SubmitFailed):service.submit(None,self.forms,'demo:replica',self.answers,fetch=self.fetch,post=self.post)
 
 if __name__=='__main__':unittest.main()

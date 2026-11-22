@@ -91,8 +91,25 @@ def _question_json(q: gform.Question, prefill: str | None, can_draft: bool, fill
     return out
 
 
+def _entry(session, forms, item_id):
+    if item_id in forms:
+        return forms[item_id]
+    row = get_item(session, item_id)
+    if not row:
+        return None
+    from app.catalog.program_facts import presentation
+    # 브라우저가 임의로 보낸 URL은 받지 않고 공고에서 확인한 신청 링크만 읽는다.
+    urls = presentation(row).get("apply_urls", "") if row["kind"] == "program" else row["payload"].get("aplyUrlAddr", "")
+    url = next((url for url in (urls or "").split() if re.match(r"^https://(?:docs\.google\.com/forms/|forms\.gle/)", url)), None)
+    return {"form_url":url, "read_only":True} if url else None
+
+
+def _can_submit(entry):
+    return bool(entry.get("submission_form_url") and entry.get("test_only") and entry.get("submission_enabled",False) is True)
+
+
 def _fetch_source(entry, fetch):
-    return gform.fetch_source(entry["form_url"]) if entry.get("submission_form_url") and fetch is gform.fetch else fetch(entry["form_url"])
+    return gform.fetch_source(entry["form_url"]) if fetch is gform.fetch else fetch(entry["form_url"])
 
 
 def question_contract(form):
@@ -112,7 +129,7 @@ def form_revision(form):
 
 def start(session: Session | None, forms: dict[str, dict], item_id: str, applicant: dict | None,
           profile: dict | None, fetch=gform.fetch) -> dict:
-    entry = forms.get(item_id)
+    entry = _entry(session, forms, item_id)
     if entry is None:
         info = _item_info(session, item_id, None)
         return {"channel": None, "available": False, "reason": "not_supported",
@@ -152,7 +169,7 @@ def start(session: Session | None, forms: dict[str, dict], item_id: str, applica
                              for f in filled)
         replies.append(f"알고 있는 정보로 채웠어요. {summary}")
     return {"channel": "form", "test_only":bool(entry.get("test_only")), "available": True, "form_revision":form_revision(form),
-            "source_form_url": entry["form_url"], "replica": bool(entry.get("submission_form_url")), "submission_ready":entry.get("submission_enabled",True),
+            "source_form_url": entry["form_url"], "replica": bool(entry.get("submission_form_url")), "submission_ready":_can_submit(entry), "read_only":not _can_submit(entry),
             "item": {"id": item_id, "title": info["title"]},
             "filled": filled,
             "questions": [_question_json(a["question"], a["prefill"], a["can_draft"], a["fill_key"]) for a in ask],
@@ -167,8 +184,8 @@ def _short_label(label: str) -> str:
 
 def submit(session: Session | None, forms: dict[str, dict], item_id: str, answers: dict,
            fetch=gform.fetch, post=None, expected_revision: str | None = None) -> dict:
-    entry = forms.get(item_id)
-    if entry is None:
+    entry = _entry(session, forms, item_id)
+    if entry is None or not _can_submit(entry):
         raise NotAvailable(item_id)
     form = _fetch_source(entry, fetch)          # 마감·형식 변경이면 FormError
     if expected_revision and expected_revision != form_revision(form):
@@ -212,7 +229,7 @@ def draft(session: Session | None, model: ChatModel | None, forms: dict[str, dic
           question_id: str, messages: list[dict], profile: dict | None, checkin: dict,
           previous: str | None, fetch=gform.fetch, preview: bool = False) -> dict:
     """preview=True 면 LLM 을 부르지 않고, AI 에 보낼 글을 그대로 돌려준다 ('AI에 전달되는 내용 보기')."""
-    entry = forms.get(item_id)
+    entry = _entry(session, forms, item_id)
     if entry is None:
         raise NotAvailable(item_id)
     form = _fetch_source(entry, fetch)
