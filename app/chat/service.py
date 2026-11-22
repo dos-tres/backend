@@ -306,5 +306,10 @@ def respond(session: Session | None, model: ChatModel | None, messages: list[dic
         replies = [result_summary(results), "다른 말로 다시 찾아보거나, 지금까지 이야기로 맞춤 추천을 받아 볼까요?"]
         choices = offer_choices("recommend", merged) if results["type"] == "search" else []
 
+    if selected and results is None and re.search(r'신청.*(?:가능|할\s*수)|자격|참여.*(?:가능|대상)',last):
+        replies=drop_sentences(replies,lambda text:bool(re.search(r'다른.*(?:지원|분야|추천)|더.*지원|찾아볼까요',text)))
+        replies=[*replies[:1], '확인한 조건을 바탕으로 신청을 같이 준비해 볼까요? 마지막에 입력 내용을 확인한 뒤 제출해요.']
+        choices=[{'type':'message','label':'신청 같이하기','text':'신청할래'}]
+
     return {"mode": intent, "replies": replies, "safety": None, "checkin": merged, "checkin_update": update,
             "choices": choices, "results": results, "needs": needs}

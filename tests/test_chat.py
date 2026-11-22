@@ -54,6 +54,13 @@ class ChatApiTests(unittest.TestCase):
         self.assertIn('sigungu_cd',context)
         self.assertNotIn('source_content',context)
 
+    def test_eligibility_continues_to_selected_application(self):
+        self.use({'replies':['공고에는 참여 대상 제한이 없어요.','다른 지원도 찾아볼까요?'],'intent':'chat'})
+        data=self.post(messages=user('내가 신청할 수 있어?'),profile=PROFILE,selected_item_id='program:orang:75646').json()
+        self.assertIn('신청을 같이 준비',data['replies'][-1])
+        self.assertNotIn('다른 지원',' '.join(data['replies']))
+        self.assertEqual(data['choices'][0]['text'],'신청할래')
+
     def test_inquiry_script_is_not_a_call_and_offers_schedule(self):
         self.use({'replies':['unused'],'intent':'chat'})
         data=self.post(messages=user('자기소개서를 미리 써 가야 하는지 물어볼 말 정리해줘'),selected_item_id='program:orang:75646').json()
