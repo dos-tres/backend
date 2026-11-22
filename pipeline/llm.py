@@ -1,8 +1,8 @@
 """LLM 호출 공통과 분류 태그 정의 (정책·프로그램 분류가 같이 쓴다).
 
-LLM: OpenAI 호환 chat/completions (SSAFY GMS 등). 표준 라이브러리만 사용.
-  GMS_KEY 또는 OPENAI_API_KEY      저장소 루트 .env
-  OPENAI_BASE_URL (또는 LLM_BASE_URL)  없으면 https://gms.ssafy.io/gmsapi/api.openai.com/v1
+LLM: OpenAI 호환 chat/completions. 표준 라이브러리만 사용.
+  OPENAI_API_KEY (예전 이름 GMS_KEY)  저장소 루트 .env
+  OPENAI_BASE_URL (또는 LLM_BASE_URL)  없으면 https://api.openai.com/v1
   LLM_MODEL                         기본 gpt-4.1-mini
 """
 from __future__ import annotations
@@ -26,10 +26,10 @@ BATCH = 20
 
 
 def llm_config():
-    key = require_env("GMS_KEY", "OPENAI_API_KEY", "LLM_API_KEY")
+    key = require_env("OPENAI_API_KEY", "LLM_API_KEY", "GMS_KEY")
     base = (os.environ.get("OPENAI_BASE_URL") or os.environ.get("LLM_BASE_URL")
-            or "https://gms.ssafy.io/gmsapi/api.openai.com/v1").rstrip("/")
-    model = os.environ.get("LLM_MODEL", "gpt-4.1-mini")
+            or "https://api.openai.com/v1").rstrip("/")
+    model = os.environ.get("LLM_MODEL") or "gpt-4.1-mini"
     return key, base, model
 
 

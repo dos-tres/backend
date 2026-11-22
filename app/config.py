@@ -13,9 +13,10 @@ class Settings(BaseSettings):
     database_url: SecretStr = SecretStr("")
     allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
-    # 대화용 LLM (OpenAI 호환). 파이프라인 분류와 같은 키 이름을 쓴다. 키가 없으면 /api/chat 은 503 (위기 안내는 키 없이도 동작)
-    llm_api_key: SecretStr = Field(SecretStr(""), validation_alias=AliasChoices("llm_api_key", "GMS_KEY", "OPENAI_API_KEY"))
-    llm_base_url: str = Field("https://gms.ssafy.io/gmsapi/api.openai.com/v1",
+    # 대화용 LLM (OpenAI). 파이프라인 분류와 같은 키 이름을 쓴다. 키가 없으면 /api/chat 은 503 (위기 안내는 키 없이도 동작)
+    # GMS_KEY 는 예전 이름(SSAFY GMS, 종료). OPENAI_API_KEY 가 있으면 그쪽을 먼저 쓴다
+    llm_api_key: SecretStr = Field(SecretStr(""), validation_alias=AliasChoices("llm_api_key", "OPENAI_API_KEY", "GMS_KEY"))
+    llm_base_url: str = Field("https://api.openai.com/v1",
                               validation_alias=AliasChoices("llm_base_url", "OPENAI_BASE_URL", "LLM_BASE_URL"))
     llm_model: str = Field("gpt-4.1-mini", validation_alias=AliasChoices("llm_model", "LLM_MODEL"))
     llm_timeout_seconds: float = Field(20.0, gt=0, le=60)

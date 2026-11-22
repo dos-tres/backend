@@ -1,4 +1,4 @@
-"""대화용 LLM 클라이언트 (OpenAI 호환 chat/completions, 예: SSAFY GMS).
+"""대화용 LLM 클라이언트 (OpenAI chat/completions).
 
 파이프라인용(pipeline/llm.py)과 따로 둔다. 웹 요청 안에서 쓰므로 전체 시간 제한(재시도 포함)을 두고, 재시도는 1번만 하고,
 실패하면 예외로 알린다(예시 답변으로 대신하지 않는다 — docs/DEPLOYMENT.md 5장).

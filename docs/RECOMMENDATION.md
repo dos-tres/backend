@@ -38,7 +38,7 @@
 ### 실행
 
 ```bash
-# .env에 YOUTH_POLICY_API_KEY, YOUTH_CENTER_API_KEY, GMS_KEY(또는 OPENAI_API_KEY) 입력
+# .env에 YOUTH_POLICY_API_KEY, YOUTH_CENTER_API_KEY, OPENAI_API_KEY 입력
 python -m pipeline.run_daily              # 수집 → 분류 → DB 적재
 python -m pipeline.run_daily --no-llm     # 캐시에 있는 분류만 사용
 python -m pipeline.load_catalog --seed    # 키 없이 seed 데이터만 DB에 넣기

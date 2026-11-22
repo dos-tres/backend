@@ -122,8 +122,8 @@ FE ─ messages(지금까지 대화) + profile(있으면) + checkin(지금까지
 
 | 변수 | 기본 |
 | --- | --- |
-| `GMS_KEY` (또는 `OPENAI_API_KEY`, `LLM_API_KEY`) | 없음 → 503 |
-| `OPENAI_BASE_URL` (또는 `LLM_BASE_URL`) | GMS 주소 |
+| `OPENAI_API_KEY` (또는 `LLM_API_KEY`, 예전 `GMS_KEY`) | 없음 → 503 |
+| `OPENAI_BASE_URL` (또는 `LLM_BASE_URL`) | `https://api.openai.com/v1` |
 | `LLM_MODEL` | gpt-4.1-mini |
 | `LLM_TIMEOUT_SECONDS` | 20 — **재시도까지 합친 전체 시간**. 시간 초과면 다시 시도하지 않고, 연결 오류·429·5xx만 남은 시간이 2초 이상일 때 한 번 더 |
 

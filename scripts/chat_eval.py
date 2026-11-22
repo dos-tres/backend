@@ -3,7 +3,7 @@
   python scripts/chat_eval.py                       # 28개 × 3회, 결과 요약 출력
   python scripts/chat_eval.py --rounds 1 --out data/runtime/chat_eval.json   # 응답 전체를 파일로
 
-.env 의 GMS_KEY(또는 OPENAI_API_KEY)가 필요하고 LLM 호출 비용이 든다(기본 84회). DATABASE_URL 이 있으면 DB로 추천·검색.
+.env 의 OPENAI_API_KEY가 필요하고 LLM 호출 비용이 든다(기본 84회). DATABASE_URL 이 있으면 DB로 추천·검색.
 기준과 최근 결과: docs/CHAT.md 6장. 위기 규칙은 LLM 없이 tests/test_chat.py 에서 확인한다.
 """
 import argparse
@@ -167,7 +167,7 @@ def main():
     if crisis:
         print(f"위기 응답 시간 ms: 최대 {max(crisis)}")
     if not llm and not passed:
-        print("LLM 응답이 없습니다. .env 의 GMS_KEY 를 확인하세요.")
+        print("LLM 응답이 없습니다. .env 의 OPENAI_API_KEY 를 확인하세요.")
     for o in out:
         if o["fails"]:
             d = o["data"]
