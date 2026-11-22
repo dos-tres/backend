@@ -84,6 +84,21 @@ class ChatApiTests(unittest.TestCase):
         self.assertIn('신청하기 어려워요',young['replies'][0])
         self.assertEqual(young['choices'],[])
 
+    def test_money_concern_offers_recommendation_without_reasking(self):
+        model=self.use({'replies':['unused'],'intent':'chat'})
+        for text in ['생활비','돈이 없어 돈이 없다고','돈이 부족해']:
+            data=self.post(messages=user(text),profile=PROFILE).json()
+            self.assertIn('찾아드릴까요',data['replies'][0])
+            self.assertNotIn('어떤 부분',' '.join(data['replies']))
+            self.assertIsNone(data['results'])
+            self.assertIn('정책',data['choices'][0]['text'])
+        self.assertEqual(model.calls,[])
+
+    def test_accepting_living_cost_offer_starts_recommendation(self):
+        self.use({'replies':['찾아볼게요.'],'intent':'chat'})
+        data=self.post(messages=[{'role':'assistant','content':'생활비 부담을 덜 수 있는 지원을 찾아드릴까요?'},{'role':'user','content':'응'}],profile=PROFILE).json()
+        self.assertIsNotNone(data['results'])
+
     def test_inquiry_script_is_not_a_call_and_offers_schedule(self):
         self.use({'replies':['unused'],'intent':'chat'})
         data=self.post(messages=user('자기소개서를 미리 써 가야 하는지 물어볼 말 정리해줘'),selected_item_id='program:orang:75646').json()
@@ -178,7 +193,8 @@ class ChatApiTests(unittest.TestCase):
         self.use({"replies": ["그랬군요.", "원하면 제가 맞는 지원을 찾아볼까요?"], "intent": "share_state",
                   "checkin": {"economy": "high"}, "offer": "recommend", "next_question": "outing"})
         data = self.post(messages=user("돈이 너무 부족해요")).json()
-        self.assertEqual(data["choices"], [])
+        self.assertIn("찾아드릴까요",data["replies"][0])
+        self.assertEqual(data["choices"][0]["label"],"맞는 지원 찾아보기")
         self.use({"replies": ["원하면 찾아볼까요?"], "intent": "share_state", "interests": ["집·주거"], "offer": "search"})
         data = self.post(messages=user("집 문제가 걱정이에요")).json()
         self.assertEqual(data["choices"], [])
@@ -223,9 +239,9 @@ class ChatApiTests(unittest.TestCase):
         # 4) 방금 알아들은 문항을 말을 바꿔 다시 묻는 문장은 뺌 (다른 질문은 남김)
         self.use({"replies": ["힘들겠어요. 생활비 부담은 어느 정도인가요?"], "intent": "share_state",
                   "checkin": {"economy": "high"}})
-        self.assertEqual(self.post(messages=user("돈이 없어요")).json()["replies"], ["힘들겠어요.", "어떤 도움이 있으면 좋을지 조금 더 이야기해 줄래요?"])
+        self.assertIn("찾아드릴까요",self.post(messages=user("돈이 없어요")).json()["replies"][0])
         self.use({"replies": ["그렇군요. 사람 만나는 건 부담돼요?"], "intent": "share_state", "checkin": {"economy": "high"}})
-        self.assertIn("사람 만나는 건 부담돼요?", self.post(messages=user("돈이 없어요")).json()["replies"][0])
+        self.assertIn("찾아드릴까요", self.post(messages=user("돈이 없어요")).json()["replies"][0])
         # 5) 검색은 첫 검색어(핵심)가 들어간 항목만 → 관련 없는 결과 대신 0건
         self.use({"replies": ["찾아볼게요."], "intent": "search", "search_keywords": ["우주비행사", "훈련"]})
         data = self.post(messages=user("우주비행사 훈련 지원 있어요?"), profile=PROFILE).json()

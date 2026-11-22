@@ -202,6 +202,18 @@ def respond(session: Session | None, model: ChatModel | None, messages: list[dic
                 "checkin": checkin, "checkin_update": {}, "choices": CRISIS_CHOICES,
                 "results": None, "needs": []}
 
+    previous=next((m['content'] for m in reversed(messages[:-1]) if m['role']=='assistant'),'')
+    if re.fullmatch(r'응|네|넹|ㅇㅇ|좋아|좋아요|그래|그래요',last.strip().rstrip('.!')) and re.search(r'생활비.*(?:찾아|추천)',previous):
+        last='생활비 부담을 덜 정책을 추천해줘'
+        messages=[*messages[:-1],{'role':'user','content':last}]
+        selected_item_id=None
+    money_concern=bool(re.search(r'돈.{0,5}(?:없|부족)|생활비|경제.{0,4}(?:부담|어려)|월세.{0,5}(?:부담|없|부족)',last))
+    if money_concern and not REQUEST.search(last):
+        interests=list(dict.fromkeys(['생활비·금융',*checkin.get('interests',[])]))[:3]
+        update={'interests':interests}
+        merged=merge(checkin,update)
+        return {'mode':'chat','replies':['생활비 부담을 덜 수 있는 지원을 찾아드릴까요?'],'checkin':merged,'checkin_update':update,'choices':[{'type':'message','label':'맞는 지원 찾아보기','text':'생활비 부담을 덜 정책을 추천해줘'}],'results':None,'needs':[],'safety':None}
+
     if model is None:
         raise LLMUnavailable("not configured")
     new_discovery=bool(re.search(r'추천\s*해|찾아\s*줘|찾아주세요',last)) and not re.search(r'신청|서류|준비물|링크',last)
