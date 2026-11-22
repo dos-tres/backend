@@ -81,7 +81,7 @@ def checkin_summary(body: CheckinRequest) -> dict:
 def recommendations(body: RecommendRequest, request: Request, session: Session | None = Depends(optional_db)) -> dict:
     try:
         result = recommend(session, body.profile.model_dump(), body.checkin)
-        return apply_registry.mark(result, apply_registry.load(request.app.state.settings.apply_forms_path))
+        return apply_registry.mark(result, apply_registry.from_settings(request.app.state.settings))
     except CheckinError as exc:
         raise HTTPException(status_code=422, detail="Invalid check-in answers") from exc
     except UnknownRegion as exc:

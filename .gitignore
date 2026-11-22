@@ -9,3 +9,6 @@ data/runtime/
 
 # 시연용 테스트 구글폼 목록 (Git 제외, docs/APPLY.md 11장)
 *.local.json
+
+# 배포 설정(비밀값 포함). 예시 파일만 커밋한다
+deploy/containers.json

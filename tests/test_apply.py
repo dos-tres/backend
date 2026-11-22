@@ -136,6 +136,21 @@ class PayloadTests(unittest.TestCase):
         self.assertEqual(ctx.exception.invalid, ["q3"])
 
 
+class RegistryTests(unittest.TestCase):
+    def test_env_json_and_file_merge(self):
+        from app.apply import registry
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "forms.local.json"
+            path.write_text(json.dumps({"_note": "x", "a": {"form_url": "file-a"}, "b": {"form_url": "file-b"}}),
+                            encoding="utf-8")
+            forms = registry.load(str(path), json.dumps({"b": {"form_url": "env-b"}, "c": {"form_url": "env-c"}}))
+        self.assertEqual({k: v["form_url"] for k, v in forms.items()}, {"a": "file-a", "b": "env-b", "c": "env-c"})
+        self.assertEqual(registry.load("", "not json"), {})
+        self.assertEqual(registry.load("missing.json", ""), {})
+        settings = Settings(_env_file=None, apply_forms_json=json.dumps({"demo:open": {"form_url": VIEW}}))
+        self.assertEqual(list(registry.from_settings(settings)), ["demo:open"])
+
+
 class FakeModel:
     def __init__(self, data):
         self.data, self.calls = data, []

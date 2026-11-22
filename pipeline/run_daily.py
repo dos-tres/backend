@@ -23,6 +23,7 @@ STEPS = [
     ("정책 수집", ["pipeline/policies/fetch.py"], "policy"),
     ("정책 분류", ["pipeline/policies/classify.py"], "policy"),
     ("센터 목록", ["pipeline/programs/crawl/sync_centers.py"], "program"),
+    ("센터 공간소개·공지", ["-m", "pipeline.programs.crawl.seoul_centers"], "center-content"),
     ("서울청년센터", ["pipeline/programs/crawl/seoul_orang.py"], "program"),
     ("그누보드", ["pipeline/programs/crawl/gnuboard.py"], "program"),
     ("프로그램 통합", ["pipeline/programs/crawl/merge.py"], "program"),
@@ -47,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
 
     broken: set[str] = set()
     for name, cmd, group in STEPS:
-        if group == "program" and args.skip_crawl and "classify" not in cmd[0]:
+        if group in {"program", "center-content"} and args.skip_crawl and "classify" not in cmd[0]:
             continue
         if group in broken:
             print(f"- {name}: 앞 단계 실패로 건너뜀")

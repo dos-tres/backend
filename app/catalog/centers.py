@@ -14,14 +14,35 @@ def center_guides():
     return json.loads(Path(__file__).with_name('center_guides.json').read_text(encoding='utf-8'))
 
 
+@lru_cache(maxsize=2)
+def official_snapshot(path, modified):
+    try:
+        return json.loads(Path(path).read_text(encoding='utf-8')).get('items', {})
+    except (ValueError, OSError):
+        return {}
+
+
+def official_content(name):
+    path = paths.PROGRAM_DIR / 'center_official.json'
+    if not path.exists():
+        path = paths.SEED_PROGRAM_DIR / 'center_official.json'
+    if not path.exists():
+        return None
+    matches = [v for v in official_snapshot(str(path), path.stat().st_mtime_ns).values() if center_key(v.get('name', '')) == center_key(name)]
+    return matches[0] if len(matches) == 1 else None
+
+
 def add_center_guide(item):
+    official = official_content(item['name'])
+    if official:
+        item = {**item, 'official': official, 'address': official.get('address') or item['address'], 'homepage': official.get('homepage') or item['homepage']}
     guides = center_guides()
     guide = guides.get(item['id'])
     if guide is None and '서울청년센터' in item['name']:
         guide = guides['_seoul']
     if not guide:
         return item
-    return {**item, 'guide': guide, 'address': guide.get('address') or item['address'], 'homepage': item['homepage'] or guide.get('homepage', '')}
+    return {**item, 'guide': guide, 'address': item['address'] if official else guide.get('address') or item['address'], 'homepage': item['homepage'] or guide.get('homepage', '')}
 
 
 def center_rows():
