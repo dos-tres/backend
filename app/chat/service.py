@@ -28,7 +28,7 @@ from app.catalog.repository import known_sigungu_codes, get_item
 
 HISTORY_FOR_LLM = 12          # LLM 에 보내는 최근 메시지 수
 MAX_LLM_BUBBLES = 2         # LLM 말풍선 수 (결과 말풍선은 서버가 따로 붙임)
-MAX_BUBBLE = 200            # 말풍선 하나 최대 글자 수
+MAX_BUBBLE = 650            # 말풍선 하나 최대 글자 수
 SINGLE_CHOICE = ("economy", "participation", "outing", "conversation", "support", "satisfaction", "face_to_face")
 MAX_INTERESTS = QUESTIONS_BY_ID["interests"]["max"]
 
@@ -157,9 +157,10 @@ def _ro(word: str) -> str:
 def result_summary(results: dict) -> str:
     """결과 말풍선 (서버가 실제 결과로 만든다). 예: "'월세'로 찾아봤어요! 정책 5개, 청년센터 프로그램 1개가 있어요." """
     n_policy, n_program = len(results["policies"]), len(results["programs"])
-    if results.get('curated') and not n_program:
+    if results.get('curated') and not n_program and not n_policy:
         return f"현재 모아 둔 공고에서 {results.get('selection_need','요청한 활동')} 조건에 맞는 프로그램을 찾지 못했어요. 관련 없는 행사로 대신 추천하지 않을게요."
-    if results.get("curated") and n_program:
+    if results.get("curated") and (n_program or n_policy):
+        if n_policy:return f"요청한 도움과 공고 내용을 비교해서 프로그램 {n_program}개와 함께 살펴볼 취업 정책 {n_policy}개를 골랐어요. 정책의 추가 신청 조건은 카드에서 함께 확인해요."
         return f"{results.get('selection_need','말씀하신 활동')} 조건과 공고 내용을 비교해서 프로그램 {n_program}개로 추렸어요. 먼저 첫 카드를 함께 볼까요?"
     found = ", ".join(part for part in (f"정책 {n_policy}개" if n_policy else "",
                                         f"청년센터 프로그램 {n_program}개" if n_program else "") if part)

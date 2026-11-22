@@ -18,3 +18,11 @@ class CurateTests(unittest.TestCase):
     def test_policy_request_unchanged(self):
         result={'policies':[{'id':'p'}],'programs':[]}
         self.assertIs(curate(result,[{'role':'user','content':'월세 정책 찾아줘'}]),result)
+
+    def test_career_includes_relevant_policy_unless_program_only(self):
+        result={'policies':[{'id':'national','title':'국민취업지원제도'}],'programs':[{'id':'p','title':'자소서 첨삭','summary':'자기소개서 직접 피드백'}]}
+        actual=curate(result,[{'role':'user','content':'취업 준비 중이야. 자소서 직접 피드백 프로그램 찾아줘'}])
+        self.assertEqual(actual['policies'][0]['id'],'national')
+        self.assertLessEqual(len(actual['policies'])+len(actual['programs']),3)
+        only=curate(result,[{'role':'user','content':'취업 프로그램만 찾아줘'}])
+        self.assertEqual(only['policies'],[])

@@ -4,7 +4,7 @@ import re
 
 def curate(results: dict, messages: list[dict], session=None, profile=None, today=None) -> dict:
     user_text = ' '.join(m['content'] for m in messages[-12:] if m['role'] == 'user')
-    wants_program = bool(re.search(r'프로그램|문화\s*활동|모임|사람.*만나', user_text))
+    wants_program = bool(re.search(r'프로그램|문화\s*활동|모임|사람.*만나|(?:취업|자소서|면접).*?(?:추천|찾)', user_text))
     if not wants_program:
         return results
     last_user=next((m['content'] for m in reversed(messages) if m['role']=='user'),'')
@@ -22,6 +22,16 @@ def curate(results: dict, messages: list[dict], session=None, profile=None, toda
         from app.recommend.service import to_item
         rows,source=find_candidates(session,profile['sigungu_cd'],profile.get('age'),today or date.today())
         results={**results,'programs':[to_item(0,[],r,profile['sigungu_cd'],today) for r in rows if r['kind']=='program' and eligible(r,profile)],'source':source}
+    policies=[]
+    if career and not re.search(r'프로그램만|정책.{0,5}(?:빼|제외)',last_user):
+        candidates=results.get('policies',[])
+        if profile:
+            candidates=[to_item(0,[],r,profile['sigungu_cd'],today) for r in rows if r['kind']=='policy' and eligible(r,profile)]
+        policies=[dict(item) for item in candidates if re.search(r'국민취업지원|구직|취업|면접|자소서',item.get('title',''))]
+        policies.sort(key=lambda item:0 if '국민취업지원' in item.get('title','') else 1)
+        policies=policies[:1]
+        for item in policies:
+            item['fit_reason']='취업 준비를 시작했다는 말씀에 맞춰 상담·구직 지원 정책도 함께 골랐어요. 최종 신청 가능 여부는 공고의 소득·재산 등 추가 조건을 확인해야 해요.'
     picked = []
     for original in results['programs']:
         item = dict(original)
@@ -62,4 +72,4 @@ def curate(results: dict, messages: list[dict], session=None, profile=None, toda
         item['fit_notice'] = '참여 인원과 진행 방식은 확인이 필요해요. 소규모라고 확정할 수는 없어요.' if small and not re.search(r'소규모|소모임', text) else ''
         picked.append((score,item))
     picked.sort(key=lambda pair: -pair[0])
-    return {**results, 'policies': [], 'programs': [item for _,item in picked[:3]], 'curated': True, 'selection_need':'자소서·면접 직접 피드백' if feedback else '취업 준비' if career else '문화·교류 활동'}
+    return {**results, 'policies': policies, 'programs': [item for _,item in picked[:3-len(policies)]], 'curated': True, 'selection_need':'자소서·면접 직접 피드백' if feedback else '취업 준비' if career else '문화·교류 활동'}
