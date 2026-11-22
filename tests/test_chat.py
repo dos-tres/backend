@@ -70,9 +70,19 @@ class ChatApiTests(unittest.TestCase):
     def test_eligibility_continues_to_selected_application(self):
         self.use({'replies':['공고에는 참여 대상 제한이 없어요.','다른 지원도 찾아볼까요?'],'intent':'chat'})
         data=self.post(messages=user('내가 신청할 수 있어?'),profile=PROFILE,selected_item_id='program:orang:75646').json()
-        self.assertIn('신청을 같이 준비',data['replies'][-1])
+        self.assertIn('신청 내용을 같이 준비',data['replies'][-1])
+        self.assertIn('신청할 수 있어요',data['replies'][0])
         self.assertNotIn('다른 지원',' '.join(data['replies']))
         self.assertEqual(data['choices'][0]['text'],'신청할래')
+
+    def test_policy_eligibility_states_missing_conditions_or_age_failure(self):
+        self.use({'replies':['unused'],'intent':'chat'})
+        item='policy:20260710005400113256'
+        data=self.post(messages=user('내가 신청할 수 있어?'),profile=PROFILE,selected_item_id=item).json()
+        self.assertIn('추가 확인',data['replies'][0])
+        young=self.post(messages=user('내가 신청할 수 있어?'),profile={**PROFILE,'age':10},selected_item_id=item).json()
+        self.assertIn('신청하기 어려워요',young['replies'][0])
+        self.assertEqual(young['choices'],[])
 
     def test_inquiry_script_is_not_a_call_and_offers_schedule(self):
         self.use({'replies':['unused'],'intent':'chat'})
