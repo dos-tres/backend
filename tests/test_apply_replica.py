@@ -29,6 +29,12 @@ class ReplicaTests(unittest.TestCase):
         self.post.post.assert_not_called()
         self.target.submit_url=self.source.submit_url
         with self.assertRaises(service.NotAvailable):service.submit(None,self.forms,'demo:replica',self.answers,fetch=self.fetch,post=self.post)
+    def test_name_without_virtual_prefix_is_accepted(self):
+        self.answers['q1']='홍길동'
+        result=service.submit(None,self.forms,'demo:replica',self.answers,fetch=self.fetch,post=self.post)
+        self.assertEqual(result['status'],'simulated')
+        self.assertIn(('entry.1101','홍길동'),self.post.post.call_args.kwargs['data'])
+
     def test_real_contact_is_rejected(self):
         self.answers['q4']='010-1234-5678'
         with self.assertRaises(gform.InvalidAnswers):service.submit(None,self.forms,'demo:replica',self.answers,fetch=self.fetch,post=self.post)
