@@ -65,7 +65,7 @@ def split(questions: list[Question], applicant: dict | None, profile: dict | Non
             continue
         ask.append({"question": q, "prefill": prefill,
                     "fill_key": key if key in PERSONAL_KEYS else None,
-                    "can_draft": q.kind == "long" and key is None and bool(DRAFTABLE.search(q.label))})
+                    "can_draft": q.kind == "long" and key is None})
     return filled, ask
 
 

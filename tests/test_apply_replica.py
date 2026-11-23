@@ -49,6 +49,11 @@ class ReplicaTests(unittest.TestCase):
         self.assertEqual(result['questions'][0]['label'],self.source.questions[0].label)
         self.assertNotIn('entry',result['questions'][0])
 
+    def test_open_text_questions_offer_drafts_without_inventing_experiences(self):
+        self.source.questions[5].label='나의 올해 돌아보기! (참여 후기)'
+        result=service.start(None,self.forms,'demo:replica',None,None,fetch=self.fetch)
+        self.assertTrue(next(q for q in result['questions'] if q['id']=='q6')['can_draft'])
+
     def test_disabled_replica_never_fetches_or_posts(self):
         self.forms['demo:replica']['submission_enabled']=False
         with self.assertRaises(service.NotAvailable):service.submit(None,self.forms,'demo:replica',self.answers,fetch=self.fetch,post=self.post)
