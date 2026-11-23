@@ -246,10 +246,10 @@ def respond(session: Session | None, model: ChatModel | None, messages: list[dic
         blocked='어려워요' in verdict
         choices=[] if blocked else [{'type':'message','label':'신청 같이하기','text':'신청할래'}] if profile else [{'type':'message','label':'필요한 정보 입력','text':'내 정보 입력'}]
         return {'mode':'chat','replies':[verdict]+(['다른 조건에 맞는 기회를 찾아볼 수 있어요.'] if blocked else ['신청 내용을 같이 준비해 볼까요?'] if profile else []),'checkin':checkin,'checkin_update':{},'choices':choices,'results':None,'needs':[],'safety':None}
-    if selected and re.search(r'문의.*(?:말|대본|정리)|물어볼.*(?:말|정리)|전화.*(?:대본|대신)|준비물.*문의', last):
+    if selected and re.search(r'전화|문의.*(?:말|대본|정리)|물어볼.*(?:말|정리)|준비물.*문의', last):
         title=selected['title']
-        focus='자기소개서 초안을 미리 준비해야 하는지, 완성된 초안이 없어도 참여 가능한지' if re.search(r'자소서|자기소개서',last) else '참여 전에 준비할 자료나 준비물이 있는지'
-        return {"mode":"chat","replies":["전화는 대신 걸 수 없지만, 바로 물어볼 수 있게 정리해 드릴게요.",f"안녕하세요. ‘{title}’ 참여를 알아보고 있어요. {focus} 궁금해요. 노트북이나 따로 준비할 자료도 있을까요?"],"checkin":checkin,"checkin_update":{},"choices":[{"type":"message","label":"문의할 일정 등록","text":"문의 일정 등록"}],"needs":[],"results":None,"safety":None}
+        focus='자기소개서 초안을 미리 준비해야 하는지, 완성된 초안이 없어도 참여 가능한지' if re.search(r'자소서|자기소개서',last) else '행사의 정확한 날짜와 시작·종료 시간이 어떻게 되는지' if re.search(r'시간|몇\s*시|일시|날짜',last) else '참여 전에 준비할 자료나 준비물이 있는지'
+        return {"mode":"chat","replies":[f"안녕하세요. ‘{title}’ 참여를 알아보고 있어요. {focus} 확인하고 싶어요. 안내 부탁드려요."],"checkin":checkin,"checkin_update":{},"choices":[{"type":"message","label":"문의할 일정 등록","text":"문의 일정 등록"}],"needs":[],"results":None,"safety":None}
     if model is None:
         raise LLMUnavailable("not configured")
     data = model.complete_json(SYSTEM, [context_message(checkin, profile is not None), *source_messages, *messages[-HISTORY_FOR_LLM:]])

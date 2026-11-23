@@ -122,9 +122,16 @@ class ChatApiTests(unittest.TestCase):
     def test_inquiry_script_is_not_a_call_and_offers_schedule(self):
         self.use({'replies':['unused'],'intent':'chat'})
         data=self.post(messages=user('자기소개서를 미리 써 가야 하는지 물어볼 말 정리해줘'),selected_item_id='program:orang:75646').json()
-        self.assertIn('전화는 대신 걸 수 없지만',data['replies'][0])
-        self.assertIn('서울청년센터 중구',data['replies'][1])
+        self.assertTrue(data['replies'][0].startswith('안녕하세요.'))
+        self.assertIn('서울청년센터 중구',data['replies'][0])
         self.assertEqual(data['choices'][0]['text'],'문의 일정 등록')
+
+    def test_phone_time_question_immediately_returns_time_script(self):
+        self.use({'replies':['unused'],'intent':'chat'})
+        data=self.post(messages=user('전화로 물어보고 싶어 시간이 맞는지'),selected_item_id='program:orang:75646').json()
+        self.assertEqual(len(data['replies']),1)
+        self.assertIn('시작·종료 시간',data['replies'][0])
+        self.assertNotIn('준비물',data['replies'][0])
 
     def test_crisis_answers_with_resources_without_llm(self):
         for text in ("자살 관련 지원받고 싶어요", "요즘 그냥 죽고 싶다는 생각이 들어", "다 끝내고 싶어"):
