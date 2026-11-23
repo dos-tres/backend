@@ -119,17 +119,18 @@ class ChatApiTests(unittest.TestCase):
         data=self.post(messages=[{'role':'assistant','content':'생활비 부담을 덜 수 있는 지원을 찾아드릴까요?'},{'role':'user','content':'응'}],profile=PROFILE).json()
         self.assertIsNotNone(data['results'])
 
-    def test_inquiry_script_is_not_a_call_and_offers_schedule(self):
+    def test_inquiry_script_ends_with_help_without_schedule_prompt(self):
         self.use({'replies':['unused'],'intent':'chat'})
         data=self.post(messages=user('자기소개서를 미리 써 가야 하는지 물어볼 말 정리해줘'),selected_item_id='program:orang:75646').json()
         self.assertTrue(data['replies'][0].startswith('안녕하세요.'))
         self.assertIn('서울청년센터 중구',data['replies'][0])
-        self.assertEqual(data['choices'][0]['text'],'문의 일정 등록')
+        self.assertEqual(data['choices'],[])
+        self.assertEqual(data['replies'][-1],'더 필요한 도움은 없으세요?')
 
     def test_phone_time_question_immediately_returns_time_script(self):
         self.use({'replies':['unused'],'intent':'chat'})
         data=self.post(messages=user('전화로 물어보고 싶어 시간이 맞는지'),selected_item_id='program:orang:75646').json()
-        self.assertEqual(len(data['replies']),1)
+        self.assertEqual(len(data['replies']),2)
         self.assertIn('시작·종료 시간',data['replies'][0])
         self.assertNotIn('준비물',data['replies'][0])
 
