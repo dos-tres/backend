@@ -42,6 +42,26 @@ class ChatApiTests(unittest.TestCase):
     def post(self, **body):
         return self.client.post("/api/chat", json=body)
 
+    def test_form_requests_bypass_model_refusal(self):
+        model=self.use({'replies':['그건 아직 제가 못 해요.'],'intent':'chat'})
+        for text in ['폼 신청안돼?','니가 신청해다랄고','신청서 열어줘','나 대신 신청해줘']:
+            data=self.post(messages=user(text),profile=PROFILE,selected_item_id='program:orang:75815').json()
+            self.assertIn('원본 신청서',data['replies'][0])
+            self.assertEqual(data['choices'][0]['text'],'신청서 열어줘')
+        self.assertEqual(model.calls,[])
+
+    def test_agreement_to_form_offer_bypasses_model(self):
+        model=self.use({'replies':['unused'],'intent':'chat'})
+        messages=[{'role':'assistant','content':'신청서 질문을 같이 확인해 볼까요?'},{'role':'user','content':'응'}]
+        data=self.post(messages=messages,selected_item_id='program:orang:75815').json()
+        self.assertEqual(data['choices'][0]['text'],'신청서 열어줘')
+        self.assertEqual(model.calls,[])
+
+    def test_eligibility_not_misread_as_form_request(self):
+        self.use({'replies':['unused'],'intent':'chat'})
+        data=self.post(messages=user('신청 가능한지 알려줘'),profile=PROFILE,selected_item_id='program:orang:75646').json()
+        self.assertIn('신청할 수 있어요',data['replies'][0])
+
     def test_selected_program_uses_safe_profile_and_stored_facts(self):
         model=self.use({'replies':['이력서 첨삭과 면접 준비를 도와줘요.'],'intent':'recommend','offer':'search'})
         response=self.post(messages=user('여기서는 어떤 도움을 받을 수 있어?'),profile=PROFILE,selected_item_id='program:orang:75646')
@@ -99,12 +119,20 @@ class ChatApiTests(unittest.TestCase):
         data=self.post(messages=[{'role':'assistant','content':'생활비 부담을 덜 수 있는 지원을 찾아드릴까요?'},{'role':'user','content':'응'}],profile=PROFILE).json()
         self.assertIsNotNone(data['results'])
 
-    def test_inquiry_script_is_not_a_call_and_offers_schedule(self):
+    def test_inquiry_script_ends_with_help_without_schedule_prompt(self):
         self.use({'replies':['unused'],'intent':'chat'})
         data=self.post(messages=user('자기소개서를 미리 써 가야 하는지 물어볼 말 정리해줘'),selected_item_id='program:orang:75646').json()
-        self.assertIn('전화는 대신 걸 수 없지만',data['replies'][0])
-        self.assertIn('서울청년센터 중구',data['replies'][1])
-        self.assertEqual(data['choices'][0]['text'],'문의 일정 등록')
+        self.assertTrue(data['replies'][0].startswith('안녕하세요.'))
+        self.assertIn('서울청년센터 중구',data['replies'][0])
+        self.assertEqual(data['choices'],[])
+        self.assertEqual(data['replies'][-1],'더 필요한 도움은 없으세요?')
+
+    def test_phone_time_question_immediately_returns_time_script(self):
+        self.use({'replies':['unused'],'intent':'chat'})
+        data=self.post(messages=user('전화로 물어보고 싶어 시간이 맞는지'),selected_item_id='program:orang:75646').json()
+        self.assertEqual(len(data['replies']),2)
+        self.assertIn('시작·종료 시간',data['replies'][0])
+        self.assertNotIn('준비물',data['replies'][0])
 
     def test_crisis_answers_with_resources_without_llm(self):
         for text in ("자살 관련 지원받고 싶어요", "요즘 그냥 죽고 싶다는 생각이 들어", "다 끝내고 싶어"):
