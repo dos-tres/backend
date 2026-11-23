@@ -1,5 +1,12 @@
 # 개발 로그
 
+## 2026-11-22 — 배포 리전 시드니로 변경, Lightsail 자원 생성
+
+- 브랜치: `docs/deploy-sydney` (`main`에서)
+- 발견: 배포 계정의 조직 SCP(`AdvancedModeRegionRestrictionSecurityControlPolicy`)가 시드니·버지니아·오리건 밖 리전을 거부한다. 서울은 Lightsail 조회부터 거부되고, 시드니는 조회가 된다(CLI로 확인).
+- 결정: 정책을 고치지 않고 시드니(`ap-southeast-2`)에 배포. DEPLOYMENT.md 리전 표기와 명령을 바꾸고 9-0장을 추가.
+- 실제 생성: DB `dostres-db`(PostgreSQL 17, micro, 비공개 모드), 컨테이너 서비스 `dostres`(micro). 이미지 빌드·push·배포는 프론트 최종본 병합 후 진행한다.
+
 ## 2026-11-21 — 신청 ① 개인정보 줄이기: FE 채우기 · 치환 · AI 전달 내용 보기
 
 - 브랜치: `feat/apply-fill-keys` (`main` 0d20a4f에서)
