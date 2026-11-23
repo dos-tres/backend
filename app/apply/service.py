@@ -198,7 +198,6 @@ def submit(session: Session | None, forms: dict[str, dict], item_id: str, answer
         invalid=[]
         for q in form.questions:
             value=str(answers.get(q.id,""))
-            if re.search(r"이름|성명",q.label) and not value.startswith("가상"): invalid.append(q.id)
             if re.search(r"연락처|휴대폰|전화",q.label) and re.sub(r"\D","",value)!="01000000000": invalid.append(q.id)
         if invalid: raise gform.InvalidAnswers([],invalid)
         target = fetch(entry["submission_form_url"])
