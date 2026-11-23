@@ -67,4 +67,11 @@ class ReplicaTests(unittest.TestCase):
         self.post.post.return_value=response(page(),TARGET)
         with self.assertRaises(gform.SubmitFailed):service.submit(None,self.forms,'demo:replica',self.answers,fetch=self.fetch,post=self.post)
 
+
+    def test_conditional_region_is_not_prefilled(self):
+        self.source.questions[4].label='(선택) 생활권 지역 : 서울시 외 타지역 거주할 경우'
+        result=service.start(None,self.forms,'demo:replica',None,None,fetch=self.fetch)
+        question=next(q for q in result['questions'] if q['id']=='q5')
+        self.assertIsNone(question.get('fill_key'))
+
 if __name__=='__main__':unittest.main()

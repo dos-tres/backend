@@ -53,6 +53,8 @@ def split(questions: list[Question], applicant: dict | None, profile: dict | Non
     filled, ask = [], []
     for q in questions:
         key = next((k for pattern, k in RULES if pattern.search(q.label)), None) if q.kind != "agree" else None
+        if key == "region" and re.search(r"타\s*지역|거주할\s*경우|거주\s*시|거주하는\s*경우|생활권", q.label):
+            key = None  # 조건부 생활권은 현재 거주지와 다르므로 직접 확인한다
         value = _value(key, applicant, profile) if key else None
         if value and q.kind in ("choice",) and value not in q.options:
             value = None   # 성별 등: 선택지와 맞을 때만
